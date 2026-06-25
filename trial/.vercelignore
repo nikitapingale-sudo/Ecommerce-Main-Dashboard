@@ -1,0 +1,9 @@
+# Vercel only builds the frontend (Vite). Keep the Python backend, logs and
+# large local artifacts out of the deployment upload.
+scripts/
+logs/
+data/
+*.zip
+*.log
+__pycache__/
+.env.development

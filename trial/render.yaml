@@ -1,0 +1,21 @@
+# Render Blueprint for the backend API (one-click: Render → New → Blueprint).
+# The frontend goes to Vercel separately (see DEPLOY.md). 'standard' plan = 2GB
+# RAM, required to hold the ~858k-row dataset in memory.
+services:
+  - type: web
+    name: pw-orders-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: standard
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: API_PREWARM
+        value: "true"
+      # Set these in the Render dashboard (do NOT commit secrets):
+      - key: API_ALLOWED_ORIGINS   # e.g. https://your-app.vercel.app
+        sync: false
+      - key: GROQ_API_KEY          # gsk_...
+        sync: false
+      - key: TRINO_PASSWORD        # override scripts/dbm.py default if needed
+        sync: false

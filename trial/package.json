@@ -1,0 +1,54 @@
+{
+  "name": "pw-orders-intelligence-hub",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PW Orders Intelligence Hub — Real-time orders analytics dashboard",
+  "type": "module",
+  "author": "PhysicsWallah Data Team",
+  "license": "UNLICENSED",
+
+  "scripts": {
+    "dev":            "vite --mode development",
+    "build":          "vite build --mode production",
+    "build:staging":  "vite build --mode staging",
+    "preview":        "vite preview",
+
+    "api":            "python scripts/api.py",
+    "dbm":            "python scripts/dbm.py",
+    "dbm:7d":         "python scripts/dbm.py --days=7",
+    "dbm:30d":        "python scripts/dbm.py --days=30",
+    "dbm:dry":        "python scripts/dbm.py --dry-run --verbose",
+
+    "mirror":         "node scripts/mirror.js",
+    "mirror:list":    "node scripts/mirror.js --list",
+    "mirror:clean":   "node scripts/mirror.js --clean",
+
+    "backup":         "npm run mirror",
+    "deploy":         "npm run build && vercel --prod",
+    "deploy:preview": "npm run build && vercel"
+  },
+
+  "dependencies": {
+    "react":        "^18.3.1",
+    "react-dom":    "^18.3.1",
+    "recharts":     "^2.12.7",
+    "xlsx":         "^0.18.5",
+    "date-fns":     "^3.6.0",
+    "lucide-react": "^0.383.0"
+  },
+
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite":                 "^5.3.1",
+    "dotenv":               "^16.4.5"
+  },
+
+  "optionalDependencies": {
+    "pg": "^8.12.0"
+  },
+
+  "engines": {
+    "node": ">=18.0.0",
+    "npm":  ">=9.0.0"
+  }
+}

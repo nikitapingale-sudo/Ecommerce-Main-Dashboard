@@ -1,0 +1,5 @@
+# Python dependencies for the backend API (scripts/api.py) + DBM refresh.
+# Install with:  pip install -r scripts/requirements.txt
+trino>=0.328.0
+pandas>=2.0.0      # aggregate.py — in-memory aggregation engine
+numpy>=1.24.0      # aggregate.py

@@ -1,0 +1,70 @@
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root, [data-theme="light"] {
+  /* ── Light (default) — soft borders + depth for a premium look ── */
+  --bg:#f5f7fc; --sidebar:#ffffff; --surface:#ffffff; --surface2:#f5f7fb;
+  --card:#ffffff; --border:#e9ecf3; --border2:#d5dae6; --grid:#eef1f7;
+  --text:#0f1729; --text2:#586073; --text3:#9aa3b4;
+  --accent:#4f46e5; --accent2:#6366f1; --accent-soft:#eef0fe;
+  --accent-grad:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);
+  --green:#16a34a; --green-bg:#dcfce7;
+  --red:#e11d48;   --red-bg:#ffe4e6;
+  --yellow:#d97706; --yellow-bg:#fef3c7;
+  --blue:#2563eb;  --blue-bg:#dbeafe;
+  --orange:#ea580c; --cyan:#0891b2; --purple:#7c3aed; --pink:#db2777;
+  --font:'Inter',sans-serif; --serif:'Georgia','Times New Roman',serif; --r:10px; --r2:16px;
+  --shadow:0 1px 2px rgba(16,24,40,.04), 0 2px 8px rgba(16,24,40,.05);
+  --shadow2:0 12px 34px rgba(16,24,40,.14);
+}
+
+/* ── Dark theme ── */
+[data-theme="dark"] {
+  --bg:#0b1120; --sidebar:#0f172a; --surface:#111c33; --surface2:#0f1a30;
+  --card:#111c33; --border:#22304d; --border2:#2b3a5a; --grid:#1e293b;
+  --text:#e8edf6; --text2:#aab4c5; --text3:#7787a0;
+  --accent:#818cf8; --accent2:#a5b4fc; --accent-soft:#1e2547;
+  --accent-grad:linear-gradient(135deg,#6366f1 0%,#818cf8 100%);
+  --green:#34d399; --green-bg:#0b3b2e;
+  --red:#fb7185;   --red-bg:#3b1320;
+  --yellow:#fbbf24; --yellow-bg:#3a2c0a;
+  --blue:#60a5fa;  --blue-bg:#10243f;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  --shadow2:0 10px 30px rgba(0,0,0,.55);
+}
+
+/* ── Warm theme (editorial cream + rust — the signature look) ── */
+[data-theme="warm"] {
+  --bg:#f7f1e7; --sidebar:#fffdf9; --surface:#fffdf8; --surface2:#f5eee0;
+  --card:#fffdf8; --border:#ece2d1; --border2:#dccbb1; --grid:#efe7d8;
+  --text:#34291d; --text2:#6e5c46; --text3:#a3917a;
+  --accent:#b4552f; --accent2:#c2410c; --accent-soft:#f6e8dc;
+  --accent-grad:linear-gradient(135deg,#c2682f 0%,#a8451f 100%);
+  --green:#3f7d4f; --green-bg:#e3efe1;
+  --red:#b5402f;   --red-bg:#f6e0d8;
+  --yellow:#b07a1e; --yellow-bg:#f4ead2;
+  --blue:#3d6098;  --blue-bg:#e2e8f3;
+  --shadow:0 1px 2px rgba(90,60,25,.06), 0 2px 8px rgba(90,60,25,.06);
+  --shadow2:0 12px 34px rgba(90,60,25,.16);
+}
+
+html,body,#root{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+button{cursor:pointer;border:none;outline:none;font-family:var(--font)}
+input,select{font-family:var(--font);outline:none}
+@media(max-width:768px){:root{font-size:12px}}
+
+/* ── Filter bar mobile scroll ── */
+@media (max-width: 900px) {
+  .filter-row2 { overflow-x: auto; flex-wrap: nowrap !important; padding-bottom: 6px !important; }
+  .filter-row2::-webkit-scrollbar { height: 3px; }
+}
+
+/* ── EcomWallah chat "thinking" dots ── */
+.spin { animation: pwspin 0.8s linear infinite; }
+@keyframes pwspin { to { transform: rotate(360deg); } }
+.ew-dots { display:inline-block; animation: ew-blink 1.2s steps(1,end) infinite; }
+.ew-cursor { display:inline-block; margin-left:1px; animation: ew-blink .9s steps(1,end) infinite; opacity:.6; }
+@keyframes ew-blink { 0%,100% { opacity:.2 } 50% { opacity:1 } }
