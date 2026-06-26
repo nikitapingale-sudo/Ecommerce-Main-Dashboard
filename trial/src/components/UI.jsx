@@ -380,7 +380,7 @@ export function DataTable({ title, data, columns, filename='export', maxH=420,
         </div>
       </div>
 
-      <div style={{ overflowX:'auto', maxHeight:maxH, overflowY:'auto' }}>
+      <div className="dt-desktop" style={{ overflowX:'auto', maxHeight:maxH, overflowY:'auto' }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
           <thead style={{ position:'sticky', top:0, zIndex:1 }}>
             <tr style={{ background:'var(--surface2)' }}>
@@ -427,6 +427,31 @@ export function DataTable({ title, data, columns, filename='export', maxH=420,
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: render each row as a card (label → value) instead of a wide scroll */}
+      <div className="dt-mobile" style={{ maxHeight:maxH, overflowY:'auto' }}>
+        {paged.length === 0 ? (
+          <div style={{ padding:'28px 14px', textAlign:'center', color:'var(--text3)', fontSize:12.5 }}>
+            {searching ? <>No rows match “{q.trim()}”. <button onClick={() => onSearch('')} style={{ color:'var(--accent)', background:'transparent', fontWeight:600 }}>Clear search</button></> : 'No data'}
+          </div>
+        ) : paged.map((row,i) => (
+          <div key={i} style={{ borderBottom:'1px solid var(--border)', padding:'10px 14px' }}>
+            {columns.map((c, ci) => (
+              <div key={c.key} style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:12, padding:'3px 0',
+                                        borderTop: ci===0 ? 'none' : '1px dashed var(--border)' }}>
+                <span style={{ fontSize:10.5, color:'var(--text3)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', flexShrink:0 }}>{c.label}</span>
+                <span style={{ fontSize:12.5, color: ci===0 ? 'var(--text)' : 'var(--text2)', fontWeight: ci===0 ? 700 : 500, textAlign:'right', wordBreak:'break-word', minWidth:0 }}>
+                  {c.render
+                    ? c.render(row[c.key], row)
+                    : (typeof row[c.key]==='number'
+                        ? row[c.key].toLocaleString('en-IN',{maximumFractionDigits:2})
+                        : highlightMatch(row[c.key], searching ? q : ''))}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
 
       {totalP > 1 && (
