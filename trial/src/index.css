@@ -65,6 +65,24 @@ input,select{font-family:var(--font);outline:none}
 /* ── EcomWallah chat "thinking" dots ── */
 .spin { animation: pwspin 0.8s linear infinite; }
 @keyframes pwspin { to { transform: rotate(360deg); } }
+
+/* ── Mobile responsiveness (phones ≤ 768px) ──────────────────────────────────
+   The dashboard is desktop-first with inline styles, so we override the
+   multi-column layouts here. !important is required to beat inline styles. */
+@media (max-width: 768px) {
+  /* Stack every side-by-side grid (charts, paired cards) into one column.
+     KPI grids are excluded — they stay auto-fit (2 per row on phones). */
+  [style*="grid-template-columns"]:not(.kpi-grid) {
+    grid-template-columns: 1fr !important;
+  }
+  /* Top header: let it wrap instead of overflowing, and drop secondary bits. */
+  .app-header { flex-wrap: wrap !important; gap: 8px !important; padding: 10px 12px !important; }
+  .hide-mobile { display: none !important; }
+  /* Tighter page padding so cards use the full width. */
+  .page-scroll { padding: 12px !important; }
+  /* Keep charts a sensible height on small screens. */
+  .recharts-responsive-container { min-height: 220px; }
+}
 .ew-dots { display:inline-block; animation: ew-blink 1.2s steps(1,end) infinite; }
 .ew-cursor { display:inline-block; margin-left:1px; animation: ew-blink .9s steps(1,end) infinite; opacity:.6; }
 @keyframes ew-blink { 0%,100% { opacity:.2 } 50% { opacity:1 } }

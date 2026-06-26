@@ -66,12 +66,13 @@ export function MoversCard({ title, subtitle, movers }) {
   );
 }
 
-/* ── KPI Grid: always equal-width cards in a CSS grid ─────────────────────── */
+/* ── KPI Grid: responsive — fits as many equal cards as the width allows,
+      shows all `cols` on desktop, and gracefully drops to 2 (then 1) on phones. */
 export function KPIGrid({ children, cols = 3 }) {
   return (
-    <div style={{
+    <div className="kpi-grid" style={{
       display: 'grid',
-      gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 168px), 1fr))',
       gap: 12,
     }}>
       {children}
