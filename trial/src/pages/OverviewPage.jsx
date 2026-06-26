@@ -1,7 +1,26 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { KPI, KPIGrid, Card, FunnelBar, SectionLabel, Tabs, MoversCard, InsightBar } from '../components/UI';
+import { KPI, KPIGrid, Card, FunnelBar, StatList, SectionLabel, Tabs, MoversCard, InsightBar } from '../components/UI';
 import { metrics, groupArr, groupByDate, fetchSummary, fmt, fmtN, fmtCr, pct, STATUS_COLOR, COLORS } from '../utils/dataEngine';
+
+// Fill missing calendar days so the day-by-day trend is continuous (no skipped days).
+function fillDays(series) {
+  if (!series || series.length < 2) return series || [];
+  const byDate = {};
+  series.forEach(r => { if (r.date) byDate[r.date] = r; });
+  const keys = Object.keys(byDate).sort();
+  const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const pad = n => String(n).padStart(2, '0');
+  const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const out = [];
+  let cur = parse(keys[0]); const end = parse(keys[keys.length - 1]); let guard = 0;
+  while (cur <= end && guard++ < 2000) {
+    const k = key(cur);
+    out.push(byDate[k] || { date: k, orders: 0, qty: 0, revenue: 0, lines: 0 });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -53,7 +72,10 @@ export default function OverviewPage({ data, filters, goto }) {
       .then(b => { if (alive) setDrillBundle(b); }).catch(() => {});
     return () => { alive = false; };
   }, [drillStatus, filters]);
-  const drillTrend = useMemo(() => groupByDate(drillBundle || data, gran), [drillBundle, data, gran]);
+  const drillTrend = useMemo(() => {
+    const s = groupByDate(drillBundle || data, gran);
+    return gran === 'day' ? fillDays(s) : s;   // day view: show every day, no gaps
+  }, [drillBundle, data, gran]);
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -129,7 +151,7 @@ export default function OverviewPage({ data, filters, goto }) {
         </Card>
       </div>
 
-      {/* ── Monthly + Status Pie ── */}
+      {/* ── Monthly Revenue + Order Status Detail (count + share) ── */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
         <Card title="📅 Monthly Revenue" height={200}>
           <ResponsiveContainer width="100%" height="100%">
@@ -142,79 +164,27 @@ export default function OverviewPage({ data, filters, goto }) {
             </BarChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="🔵 Order Status Split" height={200}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={byStatus} layout="vertical" margin={{ left:4, right:40, top:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
-              <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
-              <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={90} tickLine={false} axisLine={false}/>
-              <Tooltip content={<TT/>}/>
-              <Bar dataKey="orders" name="Orders" radius={[0,3,3,0]}>
-                {byStatus.map((s,i) => <Cell key={i} fill={STATUS_COLOR[s.name]||COLORS[i%COLORS.length]}/>)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <Card title="🏷️ Order Status Detail" subtitle="Orders & share of total" height="auto">
+          <StatList
+            items={byOStat.slice(0, 10).map(s => ({ name: s.name, value: s.orders, color: STATUS_COLOR[s.name] }))}
+            colors={COLORS}/>
         </Card>
       </div>
 
-      {/* ── Channel + Payment ── */}
+      {/* ── Orders by Channel + Payment (count + share) ── */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-        <Card title="📡 Orders by Channel" height={190}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={byChan.slice(0,8)} layout="vertical" margin={{ left:4, right:40, top:0, bottom:0 }}>
-              <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
-              <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={85} tickLine={false} axisLine={false}/>
-              <Tooltip content={<TT/>}/>
-              <Bar dataKey="orders" name="Orders" radius={[0,3,3,0]}>
-                {byChan.slice(0,8).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <Card title="📡 Orders by Channel" subtitle="Orders & share of total" height="auto">
+          <StatList items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.orders }))} colors={COLORS}/>
         </Card>
-        <Card title="💳 Orders by Payment" height={190}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={byPay} layout="vertical" margin={{ left:4, right:40, top:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
-              <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
-              <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={90} tickLine={false} axisLine={false}/>
-              <Tooltip content={<TT/>}/>
-              <Bar dataKey="orders" name="Orders" radius={[0,3,3,0]}>
-                {byPay.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <Card title="💳 Orders by Payment" subtitle="Orders & share of total" height="auto">
+          <StatList items={byPay.map(p => ({ name: p.name, value: p.orders }))} colors={COLORS}/>
         </Card>
       </div>
 
-      {/* ── Top Categories + Order Status detail ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-        <Card title="📚 Top Categories by Revenue" height={210}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={byCat.slice(0,8)} layout="vertical" margin={{ left:4, right:50, top:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
-              <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={fmtCr}/>
-              <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={120} tickLine={false} axisLine={false}/>
-              <Tooltip content={<TT/>}/>
-              <Bar dataKey="revenue" name="Revenue" radius={[0,3,3,0]}>
-                {byCat.slice(0,8).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card title="🏷️ Order Status Detail" subtitle="Raw vc_order_status" height={210}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={byOStat.slice(0,10)} layout="vertical" margin={{ left:4, right:40, top:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
-              <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
-              <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={120} tickLine={false} axisLine={false}/>
-              <Tooltip content={<TT/>}/>
-              <Bar dataKey="orders" name="Orders" radius={[0,3,3,0]}>
-                {byOStat.slice(0,10).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
+      {/* ── Top Categories by Revenue (revenue + share) ── */}
+      <Card title="📚 Top Categories by Revenue" subtitle="Revenue & share of total" height="auto">
+        <StatList items={byCat.slice(0, 10).map(c => ({ name: c.name, value: c.revenue }))} format={fmt} colors={COLORS}/>
+      </Card>
     </div>
   );
 }
