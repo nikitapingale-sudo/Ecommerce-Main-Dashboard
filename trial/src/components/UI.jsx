@@ -276,6 +276,41 @@ export function FunnelBar({ label, value, total, color, onClick }) {
   );
 }
 
+/* ── Stat List — ranked rows with a subtle share-bar, the number AND the % ──
+   A cleaner alternative to bar/pie charts: each row shows name · value · share%. */
+export function StatList({ items = [], total, format = (v) => (v || 0).toLocaleString('en-IN'), colors, height }) {
+  const list = (items || []).filter(Boolean);
+  const sum = total || list.reduce((s, x) => s + (x.value || 0), 0) || 1;
+  const maxV = Math.max(...list.map(x => x.value || 0), 1);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:11, overflowY:'auto', maxHeight: height || 'none', paddingRight:2 }}>
+      {list.length === 0 && <div style={{ fontSize:12, color:'var(--text3)' }}>No data</div>}
+      {list.map((it, i) => {
+        const pct  = (it.value || 0) / sum * 100;
+        const barW = (it.value || 0) / maxV * 100;
+        const col  = it.color || (colors && colors[i % colors.length]) || 'var(--accent)';
+        return (
+          <div key={i}>
+            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:10, marginBottom:5 }}>
+              <span style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
+                <span style={{ width:9, height:9, borderRadius:3, background:col, flexShrink:0 }}/>
+                <span style={{ fontSize:12.5, color:'var(--text)', fontWeight:500, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{it.name}</span>
+              </span>
+              <span style={{ flexShrink:0, fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>
+                <b style={{ fontSize:12.5, color:'var(--text)' }}>{format(it.value || 0)}</b>
+                <span style={{ fontSize:11, color:'var(--text3)', marginLeft:6 }}>{pct.toFixed(1)}%</span>
+              </span>
+            </div>
+            <div style={{ height:6, background:'var(--surface2)', borderRadius:4, overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${barW}%`, background:col, borderRadius:4, transition:'width .5s' }}/>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 export function Tabs({ tabs, value, onChange }) {
   return (
