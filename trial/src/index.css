@@ -82,7 +82,12 @@ input,select{font-family:var(--font);outline:none}
   .page-scroll { padding: 12px !important; }
   /* Keep charts a sensible height on small screens. */
   .recharts-responsive-container { min-height: 220px; }
+  /* Tables: hide the wide scrolling table, show stacked cards instead. */
+  .dt-desktop { display: none; }
+  .dt-mobile  { display: block; }
 }
+/* Default (desktop): show the table, hide the card list. */
+.dt-mobile { display: none; }
 .ew-dots { display:inline-block; animation: ew-blink 1.2s steps(1,end) infinite; }
 .ew-cursor { display:inline-block; margin-left:1px; animation: ew-blink .9s steps(1,end) infinite; opacity:.6; }
 @keyframes ew-blink { 0%,100% { opacity:.2 } 50% { opacity:1 } }
