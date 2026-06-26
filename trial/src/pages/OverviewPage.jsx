@@ -3,37 +3,6 @@ import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContaine
 import { KPI, KPIGrid, Card, FunnelBar, StatList, SectionLabel, Tabs, MoversCard, InsightBar } from '../components/UI';
 import { metrics, groupArr, groupByDate, fetchSummary, fmt, fmtN, fmtCr, pct, STATUS_COLOR, COLORS } from '../utils/dataEngine';
 
-// Continuous day-by-day series: fills missing calendar days so the line never
-// skips dates — but bounded to the real data window (meta) and capped to ~400
-// days, so a stray out-of-range date can't stretch the chart for years.
-function dayTrend(series, meta) {
-  if (!series || series.length < 2) return series || [];
-  let rows = series.filter(r => r.date);
-  const lo = meta && meta.minDate, hi = meta && meta.maxDate;
-  if (lo && hi && hi >= lo) rows = rows.filter(r => r.date >= lo && r.date <= hi);  // drop outliers
-  if (rows.length < 2) return rows;
-
-  const byDate = {};
-  rows.forEach(r => { byDate[r.date] = r; });
-  const keys = Object.keys(byDate).sort();
-  const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
-  const pad = n => String(n).padStart(2, '0');
-  const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-  const MAX_DAYS = 400;                       // safety cap on the span
-  let start = parse(keys[0]);
-  const end = parse(keys[keys.length - 1]);
-  if ((end - start) / 86400000 > MAX_DAYS) { start = new Date(end); start.setDate(start.getDate() - MAX_DAYS); }
-
-  const out = []; let cur = start, guard = 0;
-  while (cur <= end && guard++ < MAX_DAYS + 5) {
-    const k = key(cur);
-    out.push(byDate[k] || { date: k, orders: 0, qty: 0, revenue: 0, lines: 0 });
-    cur.setDate(cur.getDate() + 1);
-  }
-  return out;
-}
-
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', fontSize:11, boxShadow:'var(--shadow2)' }}>
@@ -84,11 +53,7 @@ export default function OverviewPage({ data, filters, goto }) {
       .then(b => { if (alive) setDrillBundle(b); }).catch(() => {});
     return () => { alive = false; };
   }, [drillStatus, filters]);
-  const drillTrend = useMemo(() => {
-    const b = drillBundle || data;
-    const s = groupByDate(b, gran);
-    return gran === 'day' ? dayTrend(s, b.meta) : s;   // day view: continuous, bounded to window
-  }, [drillBundle, data, gran]);
+  const drillTrend = useMemo(() => groupByDate(drillBundle || data, gran), [drillBundle, data, gran]);
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
