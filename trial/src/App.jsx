@@ -157,7 +157,7 @@ export default function App({ userEmail, onLogout }) {
 
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
         {/* ── Top header ── */}
-        <div style={{
+        <div className="app-header" style={{
           background:'var(--surface)', borderBottom:'1px solid var(--border)',
           padding:'12px 20px', display:'flex', alignItems:'center',
           gap:14, flexShrink:0,
@@ -190,7 +190,7 @@ export default function App({ userEmail, onLogout }) {
           </div>
 
           {/* Updated timestamp */}
-          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, color:'var(--text3)', flexShrink:0 }}>
+          <div className="hide-mobile" style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, color:'var(--text3)', flexShrink:0 }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background: busy ? 'var(--yellow)' : 'var(--green)', boxShadow: busy?'0 0 0 3px rgba(217,119,6,.15)':'0 0 0 3px rgba(22,163,74,.15)' }}/>
             {busy ? 'Updating…' : <>Updated <b style={{ color:'var(--text2)', fontWeight:600 }}>{updatedAt}</b></>}
           </div>
@@ -209,7 +209,7 @@ export default function App({ userEmail, onLogout }) {
             </div>
             <ChevronDown size={15} color="var(--text3)"/>
           </button>
-          <span style={{ fontSize:11, color:'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
+          <span className="hide-mobile" style={{ fontSize:11, color:'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
             <b style={{ color:'var(--text)' }}>{(bundle.meta.filteredRows||0).toLocaleString()}</b> / {(bundle.meta.totalRows||0).toLocaleString()} rows
           </span>
 
@@ -247,7 +247,7 @@ export default function App({ userEmail, onLogout }) {
             onReset={() => setFilters(DEFAULT_FILTERS)}
             dateBounds={{ minDate: bundle.meta.minDate, maxDate: bundle.meta.maxDate }}
           />
-          <div style={{ flex:1, overflowY:'auto', padding:'16px 18px', position:'relative', minWidth:0 }}>
+          <div className="page-scroll" style={{ flex:1, overflowY:'auto', padding:'16px 18px', position:'relative', minWidth:0 }}>
             {loading
               ? <StateMsg title="Loading orders from Trino…" sub="First load fetches the full dataset into the API (can take ~a minute); filtering after that is fast." spinner/>
               : error

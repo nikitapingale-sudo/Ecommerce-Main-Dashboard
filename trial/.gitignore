@@ -93,3 +93,4 @@ data/exports/*.csv
 .vercel/
 
 .vercel
+.env*
