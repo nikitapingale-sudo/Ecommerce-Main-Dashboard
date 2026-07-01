@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://pollution-dimension-copyright-ref.trycloudflare.com/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://singh-bacon-comparing-employ.trycloudflare.com/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
