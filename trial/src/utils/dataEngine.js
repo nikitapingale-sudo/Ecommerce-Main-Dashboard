@@ -92,6 +92,8 @@ export const EMPTY_METRICS = {
   ordersStore: 0, ordersFBT: 0, ordersAddon: 0, ordersEcomBoc: 0,
   revStore: 0, revFBT: 0, revAddon: 0, revEcomBoc: 0,
   orderAmount: 0, cancelledAmount: 0, refundAmount: 0, codPct: 0,
+  netRevenue: 0, netQty: 0, netOrders: 0, netLines: 0,
+  excludedRevenue: 0, netRevPct: 0, netAov: 0, netAsp: 0,
 };
 export const EMPTY_BUNDLE = {
   meta: { filteredRows: 0, totalRows: 0, minDate: '', maxDate: '' },

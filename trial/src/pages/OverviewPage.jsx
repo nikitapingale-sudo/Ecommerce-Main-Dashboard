@@ -61,14 +61,19 @@ function FunnelChart({ title, rows, format }) {
 }
 
 /* ── Plain stat card (label on top, big value) — matches the KPI-section mock ─ */
-function StatCard({ label, value, accent }) {
+function StatCard({ label, value, accent, sub, title, emphasis }) {
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r2)',
-                  boxShadow: 'var(--shadow)', padding: '12px 14px', textAlign: 'center', minWidth: 0 }}>
+    <div title={title} style={{ background: 'var(--surface)',
+                  border: emphasis ? `1.5px solid ${accent || 'var(--accent)'}` : '1px solid var(--border)',
+                  borderRadius: 'var(--r2)',
+                  boxShadow: 'var(--shadow)', padding: '12px 14px', textAlign: 'center', minWidth: 0,
+                  cursor: title ? 'help' : undefined }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase',
                     letterSpacing: '.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
       <div style={{ fontFamily: 'var(--serif)', fontSize: 20, fontWeight: 800, color: accent || 'var(--text)',
                     marginTop: 4, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', marginTop: 2,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
     </div>
   );
 }
@@ -253,6 +258,19 @@ export default function OverviewPage({ data, filters, goto }) {
         <div style={KROW}>
           <StatCard label="Total Orders"  value={kmt(m.orders)}       accent="#4f46e5"/>
           <StatCard label="Total Revenue" value={fmtCr(m.rev)}        accent="#16a34a"/>
+          {/* Net realisable revenue — already excludes cancelled + refunded /
+              returned lines, so no status filtering is needed by hand.
+              Return/RTO is intentionally still counted. */}
+          <StatCard label="Final Revenue" value={fmtCr(m.netRevenue)} accent="#0d9488" emphasis
+                    sub={`${pct(m.netRevPct)} of gross · −${fmtCr(m.excludedRevenue)}`}
+                    title={"Revenue excluding cancelled and refunded/returned money.\n\n"
+                         + "Excludes any line that:\n"
+                         + "  • has a refunded date\n"
+                         + "  • has a cancelled date\n"
+                         + "  • is Cancelled / Closed (incl. 3P 'cancelled')\n"
+                         + "  • is Refunded or Returned (incl. Shipped & Returned,\n"
+                         + "    3P 'returned', 'returned_failed')\n\n"
+                         + "Return/RTO and Lost are NOT excluded — that revenue still counts."}/>
           <StatCard label="Order Amount"  value={fmtCr(m.orderAmount)}/>
           <StatCard label="Cancelled Amount" value={fmtCr(m.cancelledAmount)} accent="#e11d48"/>
           <StatCard label="Refund Amount"    value={fmtCr(m.refundAmount)}    accent="#ea580c"/>
@@ -266,6 +284,7 @@ export default function OverviewPage({ data, filters, goto }) {
             { name:'Order Amount',     value:m.orderAmount,     color:'#4f46e5' },
             { name:'Cancelled Amount', value:m.cancelledAmount, color:'#e11d48' },
             { name:'Refund Amount',    value:m.refundAmount,    color:'#ea580c' },
+            { name:'Final Revenue',    value:m.netRevenue,      color:'#0d9488' },
           ]}/>
         </div>
       </KpiSection>
