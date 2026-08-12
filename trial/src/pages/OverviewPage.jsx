@@ -267,7 +267,7 @@ export default function OverviewPage({ data, filters, goto }) {
                          + "Excludes any line that:\n"
                          + "  • has a refunded date\n"
                          + "  • has a cancelled date\n"
-                         + "  • is Cancelled / Closed (incl. 3P 'cancelled')\n"
+                         + "  • is Cancelled (incl. 3P 'cancelled')\n"
                          + "  • is Refunded or Returned (incl. Shipped & Returned,\n"
                          + "    3P 'returned', 'returned_failed')\n\n"
                          + "Return/RTO and Lost are NOT excluded — that revenue still counts."}/>

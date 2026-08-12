@@ -157,7 +157,10 @@ _ITEM_STATUS_MAP = _mapping([
     ("Return/Refund", ["Refunded"]),
     ("RTO/Lost",      ["Return/RTO"]),
     # ── raw Viniculum / 3P statuses ──
-    ("Cancelled",     ["Cancellation_Requested", "Cancelled", "Closed"]),
+    ("Cancelled",     ["Cancellation_Requested", "Cancelled"]),
+    # 'Closed' is its own lifecycle state, NOT a cancellation — it is not
+    # deducted from Final Revenue and shows separately on the status charts.
+    ("Closed",        ["Closed"]),
     ("Delivered",     ["Delivered"]),
     ("Packed",        ["Packed", "Partially Shipped", "Manifested"]),
     ("Allocated",     ["Allocated", "Part Picked", "Pick Complete", "Closed_By_System",
