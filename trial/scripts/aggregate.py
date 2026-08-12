@@ -31,6 +31,7 @@ DIM_COLS = {
     "courier": "delivery_partner", "warehouse": "warehouse", "state": "state", "city": "city",
     "parent": "parent_name", "orderType": "order_type", "brand": "vco_brand", "coupon": "coupon_code",
     "orderStatusRaw": "final_order_status", "lineStatusRaw": "final_item_status",
+    "orderClass": "order_class",
 }
 HIER_LEVELS = ["parent_name", "sub_cat_name", "sub_sub_cat_name", "product_name"]
 PENDING_STATUSES = ("Received", "Packed", "Shipped")
@@ -41,7 +42,8 @@ PENDENCY_TABLE_COLS = [
     "city", "state", "warehouse", "delivery_partner",
 ]
 ORDER, LINE = "vco_external_order_number", "unique_id"
-NUMERIC = ["qty", "final_revenue", "mrp", "vco_mrp", "vco_unit_price", "delivery_charge", "total_amount"]
+NUMERIC = ["qty", "final_revenue", "mrp", "vco_mrp", "vco_unit_price", "delivery_charge", "total_amount",
+           "has_cancelled_date", "has_refunded_date"]
 
 # Columns we group/filter on — cleaned + categorised once for fast groupby.
 CAT_COLS = sorted(set(DIM_COLS.values()) | set(FILTER_COLS.values())
@@ -68,6 +70,9 @@ class Dataset:
             df[c] = pd.to_numeric(df.get(c), errors="coerce").fillna(0.0) if c in df.columns else 0.0
         df["_mrp"] = df["vco_mrp"].where(df["vco_mrp"] > 0, df["mrp"])
         df["order_date"] = df["order_date"].astype("string")
+        # Date columns used for range filters (may be blank / not-yet-happened).
+        for _dc in ("final_delivery_date", "refunded_date"):
+            df[_dc] = df[_dc].fillna("").astype("string") if _dc in df.columns else ""
         # Clean + categorise dimension columns once (huge groupby speedup).
         for c in CAT_COLS:
             if c in df.columns:
@@ -95,6 +100,19 @@ class Dataset:
             mask &= (df["order_date"] >= dfrom).to_numpy()
         if dto:
             mask &= (df["order_date"] <= dto).to_numpy()
+        # Date-range filters over event dates (only rows that actually have that
+        # date set): final delivery date and refunded date.
+        for _col, _fk, _tk in (("final_delivery_date", "deliveryDateFrom", "deliveryDateTo"),
+                               ("refunded_date", "refundedDateFrom", "refundedDateTo")):
+            _f, _t = filters.get(_fk) or "", filters.get(_tk) or ""
+            if _f or _t:
+                dd = df[_col]
+                m2 = (dd != "") & dd.notna()
+                if _f:
+                    m2 &= (dd >= _f)
+                if _t:
+                    m2 &= (dd <= _t)
+                mask &= m2.to_numpy()
         for fkey, col in FILTER_COLS.items():
             vals = filters.get(fkey)
             if vals and col in df.columns:
@@ -114,6 +132,20 @@ class Dataset:
         returns = g("Return/Refund")
         discount = mrp_sum - rev
         pc = lambda x: (x / orders * 100) if orders else 0
+        # ── segment (1P/B2B/3P) + order_class buckets: distinct orders + revenue ──
+        def _split(col):
+            if col not in df.columns or len(df) == 0:
+                return {}
+            gg = df.groupby(col, observed=True).agg(o=("_oid", "nunique"), r=("final_revenue", "sum"))
+            return {str(k): (int(o), float(r)) for k, o, r in zip(gg.index.tolist(), gg["o"].tolist(), gg["r"].tolist())}
+        _seg, _oc = _split("purchase_level"), _split("order_class")
+        _o = lambda d, k: d.get(k, (0, 0.0))[0]
+        _r = lambda d, k: d.get(k, (0, 0.0))[1]
+        cod_orders = int(df.loc[df["payment_sources"] == "COD", "_oid"].nunique()) if len(df) else 0
+        canc_amt = float(df.loc[df["has_cancelled_date"] == 1, "final_revenue"].sum()) if "has_cancelled_date" in df.columns else 0.0
+        refund_amt = float(df.loc[df["has_refunded_date"] == 1, "final_revenue"].sum()) if "has_refunded_date" in df.columns else 0.0
+        # Order Amount = sum of line item amounts (vc_order_item_amount = final_revenue).
+        order_amount = float(df["final_revenue"].sum()) if len(df) else 0.0
         return {
             "orders": orders, "lines": lines, "qty": qty, "rev": rev, "mrpSum": mrp_sum,
             "discount": discount, "discPct": (discount / mrp_sum * 100) if mrp_sum > 0 else 0,
@@ -126,6 +158,16 @@ class Dataset:
             "delCharges": float(df["delivery_charge"].sum()),
             "prepaid": int((df["payment_sources"] == "Prepaid").sum()),
             "cod": int((df["payment_sources"] == "COD").sum()),
+            # ── KPI-section metrics ──
+            "orders1P": _o(_seg, "1P"), "ordersB2B": _o(_seg, "B2B"), "orders3P": _o(_seg, "3P"),
+            "rev1P": _r(_seg, "1P"), "revB2B": _r(_seg, "B2B"), "rev3P": _r(_seg, "3P"),
+            "ordersStore": _o(_oc, "Store Purchase"), "ordersFBT": _o(_oc, "FBT"),
+            "ordersAddon": _o(_oc, "BATCH ADDON"), "ordersEcomBoc": _o(_oc, "ECOM_BOC"),
+            "revStore": _r(_oc, "Store Purchase"), "revFBT": _r(_oc, "FBT"),
+            "revAddon": _r(_oc, "BATCH ADDON"), "revEcomBoc": _r(_oc, "ECOM_BOC"),
+            "orderAmount": order_amount,
+            "cancelledAmount": canc_amt, "refundAmount": refund_amt,
+            "codPct": (cod_orders / orders * 100) if orders else 0,
         }
 
     # ── generic group-by ──
@@ -160,7 +202,11 @@ class Dataset:
         return _records(g)
 
     # ── nested category hierarchy (no .xs(); 4 flat group-bys) ──
-    def hierarchy(self, df, cap=60):
+    # Perf: this runs on every /summary. Iterate via column lists (not the very
+    # slow iterrows) and cap the tree size — this is what keeps /summary fast
+    # under filters. Output shape is unchanged (orders/lines/qty/revenue/asp/
+    # aov/revShare/children), so Overview + Products drill-downs keep working.
+    def hierarchy(self, df, cap=25):
         if len(df) == 0 or not all(c in df.columns for c in HIER_LEVELS):
             return []
 
@@ -172,31 +218,52 @@ class Dataset:
 
         frames = [agg_levels(HIER_LEVELS[:i + 1]) for i in range(len(HIER_LEVELS))]
         # Index children frames by their parent-prefix tuple for O(1) lookup.
+        # Normalize group keys to tuples: groupby on a single-column list yields
+        # scalar keys in some pandas versions and 1-tuples in others — always
+        # store (and look up) tuples so nesting doesn't silently break.
         child_index = []
         for d in range(1, len(HIER_LEVELS)):
-            child_index.append({k: v for k, v in frames[d].groupby(HIER_LEVELS[:d], observed=True)})
+            idx = {}
+            for k, v in frames[d].groupby(HIER_LEVELS[:d], observed=True):
+                idx[k if isinstance(k, tuple) else (k,)] = v
+            child_index.append(idx)
 
-        def make_nodes(rows, namecol, depth, prefix):
-            total = rows["revenue"].sum()
-            rows = rows.sort_values("revenue", ascending=False).head(cap)
+        last = len(HIER_LEVELS) - 1
+
+        def make_nodes(frame, namecol, depth, prefix):
+            total = float(frame["revenue"].sum())
+            frame = frame.sort_values("revenue", ascending=False).head(cap)
+            names  = frame[namecol].tolist()
+            orders = frame["orders"].tolist()
+            lines  = frame["lines"].tolist()
+            qtys   = frame["qty"].tolist()
+            revs   = frame["revenue"].tolist()
+            deeper = depth < last
+            idx = child_index[depth] if deeper else None
             out = []
-            for _, r in rows.iterrows():
-                name = r[namecol]
-                node = {"name": name, "orders": int(r["orders"]), "lines": int(r["lines"]),
-                        "qty": float(r["qty"]), "revenue": float(r["revenue"]),
-                        "asp": float(r["revenue"] / r["qty"]) if r["qty"] > 0 else 0.0,
-                        "aov": float(r["revenue"] / r["orders"]) if r["orders"] else 0.0,
-                        "revShare": float(r["revenue"] / total * 100) if total > 0 else 0.0}
-                if depth + 1 < len(HIER_LEVELS):
-                    key = (prefix + [name])
-                    lookup = tuple(key) if len(key) > 1 else key[0]
-                    sub = child_index[depth].get(lookup)
-                    node["children"] = make_nodes(sub, HIER_LEVELS[depth + 1], depth + 1, key) if sub is not None else []
+            for i in range(len(names)):
+                nm = names[i]
+                q  = float(qtys[i] or 0)
+                rv = float(revs[i] or 0)
+                od = int(orders[i] or 0)
+                node = {"name": nm, "orders": od, "lines": int(lines[i] or 0),
+                        "qty": q, "revenue": rv,
+                        "asp": rv / q if q > 0 else 0.0,
+                        "aov": rv / od if od else 0.0,
+                        "revShare": rv / total * 100 if total > 0 else 0.0}
+                if deeper:
+                    sub = idx.get(tuple(prefix + [nm]))
+                    node["children"] = make_nodes(sub, HIER_LEVELS[depth + 1], depth + 1, prefix + [nm]) if sub is not None else []
                 out.append(node)
             return out
         return make_nodes(frames[0], HIER_LEVELS[0], 0, [])
 
     # ── SKU table (keyed by product_variant_id = SKU code) ──
+    #  `source` is the channel the SKU sold through (PW_Store, B2B_DC,
+    #  Amazon EasyShip, Meesho, …), or "Multiple" when it sells across more than
+    #  one. The Viniculum-vs-3P leg stays available as the `oms` dimension.
+    #  MRP/unit price are only carried on the Viniculum leg, so `discount` is 0
+    #  for SKUs that only ever sold on a 3P marketplace.
     def sku_table(self, df, limit=500):
         if len(df) == 0 or "product_variant_id" not in df.columns:
             return []
@@ -206,9 +273,14 @@ class Dataset:
             product_variant_name=("product_variant_name", "first"),
             vco_sku_code=("vco_sku_code", "first"), sku_type=("sku_type", "first"),
             product_name=("product_name", "first"), parent_name=("parent_name", "first"),
-            sub_cat_name=("sub_cat_name", "first"), vco_brand=("vco_brand", "first"),
+            sub_cat_name=("sub_cat_name", "first"),
+            sub_sub_cat_name=("sub_sub_cat_name", "first"),
+            vco_brand=("vco_brand", "first"),
+            source=("vco_channel_name", "first"), _srcN=("vco_channel_name", "nunique"),
             mrp=("_mrp", "first"), unit_price=("vco_unit_price", "first"),
         ).reset_index().rename(columns={"product_variant_id": "sku_code"})
+        g["source"] = np.where(g["_srcN"] > 1, "Multiple", g["source"].astype("string"))
+        g = g.drop(columns=["_srcN"])
         g = _enrich(g, g["revenue"].sum())
         g["discount"] = np.where(g["mrp"] > 0, (g["mrp"] - g["unit_price"]) / g["mrp"] * 100, 0.0)
         return _records(g.sort_values("revenue", ascending=False).head(limit))
@@ -275,21 +347,29 @@ class Dataset:
                   & df["coupon_code"].astype("string").ne("")]
         if len(used) == 0:
             return out
-        base = used.groupby("coupon_code", observed=True).agg(
+        # Group on plain STRING keys, not the categorical columns. pandas 3.0
+        # raises "Buffer dtype mismatch, expected 'const int8_t' but got 'short'"
+        # when reindexing between two groupby results whose CategoricalIndex code
+        # widths differ (int8 vs int16) — which happens for `base` vs `succ` below
+        # once a filter (e.g. an order-status filter) shrinks the observed set.
+        # String keys keep both indexes non-categorical, so reindex is safe.
+        used = used.assign(_cc=used["coupon_code"].astype("string"),
+                           _pvn=used["product_variant_name"].astype("string"))
+        base = used.groupby("_cc", observed=True).agg(
             orders=("_oid", "nunique"), lines=("_lid", "nunique"),
             qty=("qty", "sum"), revenue=("final_revenue", "sum"),
         )
-        succ = used[used["_succ"]].groupby("coupon_code", observed=True)["_oid"].nunique()
+        succ = used[used["_succ"]].groupby("_cc", observed=True)["_oid"].nunique()
         base["successOrders"] = succ.reindex(base.index).fillna(0).astype(int)
         base["failOrders"] = (base["orders"] - base["successOrders"]).clip(lower=0)
         base["successRate"] = (base["successOrders"] / base["orders"] * 100).where(base["orders"] > 0, 0)
-        base = base.reset_index().rename(columns={"coupon_code": "coupon"})
+        base = base.reset_index().rename(columns={"_cc": "coupon"})
         base = base.sort_values("revenue", ascending=False).head(top)
         out["coupons"] = _records(base)
         # Top coupon × SKU combinations by revenue
-        cs = used.groupby(["coupon_code", "product_variant_name"], observed=True).agg(
+        cs = used.groupby(["_cc", "_pvn"], observed=True).agg(
             orders=("_oid", "nunique"), qty=("qty", "sum"), revenue=("final_revenue", "sum"),
-        ).reset_index().rename(columns={"coupon_code": "coupon", "product_variant_name": "sku"})
+        ).reset_index().rename(columns={"_cc": "coupon", "_pvn": "sku"})
         cs = cs.sort_values("revenue", ascending=False).head(40)
         out["couponSku"] = _records(cs)
         return out

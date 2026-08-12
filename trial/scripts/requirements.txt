@@ -1,5 +1,10 @@
 # Python dependencies for the backend API (scripts/api.py) + DBM refresh.
 # Install with:  pip install -r scripts/requirements.txt
-trino>=0.328.0
-pandas>=2.0.0      # aggregate.py — in-memory aggregation engine
-numpy>=1.24.0      # aggregate.py
+#
+# Versions are PINNED for reproducible builds (report F-20). These are the
+# versions validated on the current runtime (Python 3.14). NOTE: pandas 3.0
+# changed CategoricalIndex reindex behaviour — aggregate.py.coupon_analysis
+# groups on string keys to stay compatible; keep that if you bump pandas.
+trino==0.337.0
+pandas==3.0.3      # aggregate.py — in-memory aggregation engine
+numpy==2.4.4       # aggregate.py

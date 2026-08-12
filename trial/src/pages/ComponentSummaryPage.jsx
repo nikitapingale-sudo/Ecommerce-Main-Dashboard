@@ -77,8 +77,9 @@ export default function ComponentSummaryPage({ data, filters }) {
       <DataTable
         title="Component-Level Summary"
         data={rows}
-        searchKeys={['component_product_variant_id','title_component','component_sku_code']}
-        searchPlaceholder="Search component id, name, SKU…"
+        searchKeys={['component_product_variant_id','title_component','component_sku_code',
+                     'study_material_type','parent_name','sub_cat_name','sub_sub_cat_name','channel']}
+        searchPlaceholder="Search component id, name, SKU, material type, category…"
         onExport={() => downloadSummaryCsv({ kind:'components', filters, name:'component_summary' })}
         exportLabel="Export all components"
         columns={[
@@ -86,6 +87,13 @@ export default function ComponentSummaryPage({ data, filters }) {
           { key:'title_component', label:'Component Name', w:300, maxW:300, wrap:true },
           { key:'component_sku_code', label:'SKU Code', w:140 },
           { key:'component_product_type', label:'Type', w:90 },
+          // Dimensions from the component-level query: the component's own study
+          // material type, plus the category hierarchy / channel it sells most through.
+          { key:'study_material_type', label:'Study Material Type', w:170 },
+          { key:'parent_name', label:'Category', w:150 },
+          { key:'sub_cat_name', label:'Sub Cat', w:140 },
+          { key:'sub_sub_cat_name', label:'Sub Sub Cat', w:150 },
+          { key:'channel', label:'Channel', w:120 },
           { key:'qty_component', label:'Qty', right:true, render:v=>Math.round(v).toLocaleString() },
           { key:'sales_component', label:'Sales', right:true, render:v=>fmt(v) },
           { key:'saleSharePct', label:'Sales %', right:true, render:v=>`${(v||0).toFixed(1)}%` },

@@ -83,13 +83,16 @@ function FilterSection({ icon, label, options, selected, onChange }) {
   );
 }
 
+const DATE_KEYS = ['dateFrom', 'dateTo', 'deliveryDateFrom', 'deliveryDateTo', 'refundedDateFrom', 'refundedDateTo'];
 function counts(f) {
   let n = (f.dateFrom || f.dateTo) ? 1 : 0;
-  Object.entries(f).forEach(([k, v]) => { if (k !== 'dateFrom' && k !== 'dateTo' && v?.length) n++; });
+  if (f.deliveryDateFrom || f.deliveryDateTo) n++;
+  if (f.refundedDateFrom || f.refundedDateTo) n++;
+  Object.entries(f).forEach(([k, v]) => { if (!DATE_KEYS.includes(k) && v?.length) n++; });
   return n;
 }
 function blank(filters) {
-  const out = { ...filters, dateFrom:'', dateTo:'' };
+  const out = { ...filters, dateFrom:'', dateTo:'', deliveryDateFrom:'', deliveryDateTo:'', refundedDateFrom:'', refundedDateTo:'' };
   Object.keys(out).forEach(k => { if (Array.isArray(out[k])) out[k] = []; });
   return out;
 }
@@ -104,7 +107,11 @@ export default function FilterPanel({ open, onClose, filters, onChange, onReset,
   const draftCount = counts(draft);
   const apply = () => onChange(draft);
   const reset = () => { const c = blank(filters); setDraft(c); onChange(c); };
-  const anchor = (dateBounds && dateBounds.maxDate) || '';
+  const today = new Date().toISOString().split('T')[0];
+  const rawMax = (dateBounds && dateBounds.maxDate) || '';
+  // Never allow picking a future date. The dataset's maxDate can be a bad
+  // value (e.g. year 2526), so cap the pickable/quick-select max at today.
+  const anchor = rawMax && rawMax < today ? rawMax : today;
   const minD = (dateBounds && dateBounds.minDate) || '';
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
 
@@ -142,6 +149,32 @@ export default function FilterPanel({ open, onClose, filters, onChange, onReset,
             ))}
           </div>
           {anchor && <div style={{ fontSize:10, color:'var(--text3)', marginTop:6 }}>Data: {minD} → {anchor}</div>}
+        </div>
+
+        {/* Final delivery date range (COALESCE delivery_date, od_delivery_date) */}
+        <div style={{ padding:'13px 14px', borderBottom:'1px solid var(--border)' }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'var(--text2)', marginBottom:8 }}>🚚 Final Delivery Date</div>
+          <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+            <input type="date" value={draft.deliveryDateFrom||''} max={today} onChange={e => setD('deliveryDateFrom', e.target.value)}
+              style={{ flex:1, minWidth:0, padding:'7px 8px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--text)', background:'var(--surface)' }}/>
+            <span style={{ color:'var(--text3)', fontSize:11 }}>to</span>
+            <input type="date" value={draft.deliveryDateTo||''} max={today} onChange={e => setD('deliveryDateTo', e.target.value)}
+              style={{ flex:1, minWidth:0, padding:'7px 8px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--text)', background:'var(--surface)' }}/>
+          </div>
+          <div style={{ fontSize:10, color:'var(--text3)', marginTop:6 }}>Only orders with a delivery date in range</div>
+        </div>
+
+        {/* Refunded date range (refunded_date) */}
+        <div style={{ padding:'13px 14px', borderBottom:'1px solid var(--border)' }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'var(--text2)', marginBottom:8 }}>💸 Refunded Date</div>
+          <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+            <input type="date" value={draft.refundedDateFrom||''} max={today} onChange={e => setD('refundedDateFrom', e.target.value)}
+              style={{ flex:1, minWidth:0, padding:'7px 8px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--text)', background:'var(--surface)' }}/>
+            <span style={{ color:'var(--text3)', fontSize:11 }}>to</span>
+            <input type="date" value={draft.refundedDateTo||''} max={today} onChange={e => setD('refundedDateTo', e.target.value)}
+              style={{ flex:1, minWidth:0, padding:'7px 8px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--text)', background:'var(--surface)' }}/>
+          </div>
+          <div style={{ fontSize:10, color:'var(--text3)', marginTop:6 }}>Only orders refunded in range</div>
         </div>
 
         {SECTIONS.map(s => (

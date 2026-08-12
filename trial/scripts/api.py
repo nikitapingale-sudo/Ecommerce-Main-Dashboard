@@ -47,7 +47,11 @@ import sys
 import gzip
 import json
 import time
+import hmac
+import base64
+import hashlib
 import threading
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -154,22 +158,107 @@ _component_cache = {}
 # ── Per-filter summary-bundle cache: { filters_json: (expires_at, body_bytes) } ──
 _summary_cache = {}
 
+# ── Serializes heavy summary/component computes (single-flight): on a single-
+#    process backend, concurrent identical/overlapping requests would otherwise
+#    each recompute and stampede the CPU, ballooning a ~15s compute to 100s+ and
+#    tripping the upstream (tunnel) timeout → 502. One compute at a time; waiters
+#    re-check the cache and reuse the first result. ──
+_compute_lock = threading.Lock()
+
 # ── Per-IP sliding-window hit log for /chat rate limiting: { ip: [timestamps] } ──
 _chat_hits = {}
 _chat_rate_lock = threading.Lock()
 
 # ── Simple user store for dashboard login ─────────────────────────────────────
-#  Stored at scripts/users.json. NOTE: passwords are kept in PLAINTEXT here
-#  because the admin asked to see them — this is fine for an internal tool but
-#  is NOT secure. Ask to switch to hashed passwords for anything public-facing.
+#  Stored at scripts/users.json. Passwords and password-reset codes are stored
+#  ONLY as PBKDF2-HMAC-SHA256 hashes (see _hash_secret / _verify_secret) — never
+#  in cleartext, and never written to any log. Legacy plaintext records created
+#  by earlier builds are transparently verified once and re-hashed on the next
+#  successful login.
 import secrets
 USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.json")
 AUTH_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_log.jsonl")
 _users_lock = threading.Lock()
 _audit_lock = threading.Lock()
 
-
 RESET_TTL = 900  # reset code valid for 15 minutes
+
+# ── Credential-handling policy (all overridable via env) ──────────────────────
+MIN_PW_LEN        = int(os.getenv("MIN_PW_LEN", "8"))          # minimum password length
+PBKDF2_ITERATIONS = int(os.getenv("PBKDF2_ITERATIONS", "200000"))
+SESSION_TTL       = int(os.getenv("SESSION_TTL", str(12 * 3600)))  # login token lifetime (s)
+RESET_MAX_TRIES   = int(os.getenv("RESET_MAX_TRIES", "5"))     # reset-code guesses before invalidation
+# Per-account login throttle: lock after N failures within the window.
+LOGIN_MAX_FAILS   = int(os.getenv("LOGIN_MAX_FAILS", "5"))
+LOGIN_FAIL_WINDOW = int(os.getenv("LOGIN_FAIL_WINDOW", "900"))  # seconds
+
+# Failed-login tracker: { email: [timestamps] }. Keyed on the account (not the
+# client IP) because X-Forwarded-For is client-controlled/spoofable.
+_login_fails = {}
+_login_fail_lock = threading.Lock()
+
+
+def _hash_secret(plain, iterations=None):
+    """Return a self-describing PBKDF2-SHA256 hash string:
+    'pbkdf2_sha256$<iters>$<salt_b64>$<hash_b64>'. Used for passwords and codes."""
+    iterations = iterations or PBKDF2_ITERATIONS
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", str(plain).encode("utf-8"), salt, iterations)
+    return "pbkdf2_sha256${}${}${}".format(
+        iterations, base64.b64encode(salt).decode("ascii"), base64.b64encode(dk).decode("ascii"))
+
+
+def _verify_secret(plain, stored):
+    """Constant-time verify `plain` against a stored secret.
+
+    Returns (ok, is_legacy). `is_legacy` is True when the stored value is a bare
+    plaintext string from an older build — verified directly here so existing
+    accounts keep working; the caller should re-hash it after a successful check.
+    """
+    if not stored:
+        return False, False
+    stored = str(stored)
+    if not stored.startswith("pbkdf2_sha256$"):
+        return hmac.compare_digest(str(plain), stored), True  # legacy plaintext
+    try:
+        _, iters, salt_b64, hash_b64 = stored.split("$", 3)
+        salt = base64.b64decode(salt_b64)
+        expected = base64.b64decode(hash_b64)
+        dk = hashlib.pbkdf2_hmac("sha256", str(plain).encode("utf-8"), salt, int(iters))
+    except Exception:
+        return False, False
+    return hmac.compare_digest(dk, expected), False
+
+
+def _mint_token(u):
+    """Issue a fresh, expiring session token on the user record; return it."""
+    token = secrets.token_urlsafe(32)
+    u["token"] = token
+    u["tokenExp"] = _now() + SESSION_TTL
+    return token
+
+
+def _login_locked(email):
+    """True if the account currently has too many recent failed logins."""
+    if LOGIN_MAX_FAILS <= 0:
+        return False
+    cutoff = _now() - LOGIN_FAIL_WINDOW
+    with _login_fail_lock:
+        hits = [t for t in _login_fails.get(email, []) if t > cutoff]
+        _login_fails[email] = hits
+        return len(hits) >= LOGIN_MAX_FAILS
+
+
+def _record_login_fail(email):
+    with _login_fail_lock:
+        hits = [t for t in _login_fails.get(email, []) if t > _now() - LOGIN_FAIL_WINDOW]
+        hits.append(_now())
+        _login_fails[email] = hits
+
+
+def _clear_login_fails(email):
+    with _login_fail_lock:
+        _login_fails.pop(email, None)
 
 
 def send_reset_email(to, code):
@@ -180,13 +269,10 @@ def send_reset_email(to, code):
     """
     host = os.getenv("SMTP_HOST")
     if not host:
-        # Fallback: no mail server configured — record the code so the admin can relay it.
-        dbm.log(f"[RESET CODE] {to} -> {code}  (set SMTP_* env vars to email this automatically)")
-        try:
-            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "reset_codes.log"), "a", encoding="utf-8") as f:
-                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {to}  {code}\n")
-        except Exception:
-            pass
+        # No mail server configured. We deliberately do NOT log or write the code
+        # anywhere (a reset code is a credential — see report F-07). Configure the
+        # SMTP_* env vars so codes can be emailed to users.
+        dbm.log(f"[RESET] code generated for {to} but SMTP is not configured — set SMTP_* env vars to deliver it")
         return False
     import smtplib, ssl
     from email.message import EmailMessage
@@ -207,12 +293,13 @@ def send_reset_email(to, code):
     return True
 
 
-def _audit(email, action, result, password=None, ip=""):
-    """Append one auth-attempt record (incl. failures) to auth_log.jsonl."""
+def _audit(email, action, result, ip=""):
+    """Append one auth-attempt record (incl. failures) to auth_log.jsonl.
+
+    NOTE: never record password or reset-code material here (report F-03).
+    """
     rec = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "email": email,
            "action": action, "result": result, "ip": ip}
-    if password is not None:
-        rec["password"] = password
     try:
         with _audit_lock:
             with open(AUTH_LOG_FILE, "a", encoding="utf-8") as f:
@@ -259,7 +346,13 @@ def get_dataset():
         if _dataset["ds"] is not None and _dataset["exp"] > _now():
             return _dataset["ds"]
         dbm.log("Loading curated dataset into memory (one-time per TTL)...")
-        rows, elapsed, _ = run_orders_query(days=0, limit=API_MAX_LIMIT)
+        # limit=0 => NO cap. API_MAX_LIMIT protects a single /orders *response*
+        # (browser payload size); applying it here instead silently truncated the
+        # in-memory dataset — the load stopped mid-window at exactly 1,000,000
+        # rows and the oldest months were never fetched, so every aggregate was
+        # computed on a partial dataset. The dashboard aggregates server-side and
+        # only ever returns small bundles, so the dataset itself must be complete.
+        rows, elapsed, _ = run_orders_query(days=0, limit=0)
         ds = aggregate.Dataset(rows)
         _dataset["ds"] = ds
         _dataset["exp"] = _now() + API_CACHE_TTL
@@ -272,7 +365,7 @@ def get_dataset():
 def get_bundle_map():
     """Load the bundle→component mapping once (small table); refresh after TTL.
 
-    Returns { product_variant_id(str): [ {cid, title, qb, ratio, sku, ptype, status}, ... ] }.
+    Returns { product_variant_id(str): [ {cid, title, qb, ratio, sku, ptype, status, mtype}, ... ] }.
     """
     with _bundle_lock:
         if _bundle_map["map"] is not None and _bundle_map["exp"] > _now():
@@ -305,6 +398,7 @@ def get_bundle_map():
                 "sku": r.get("component_sku_code"),
                 "ptype": r.get("component_product_type"),
                 "status": r.get("component_status"),
+                "mtype": r.get("component_product_material_type"),
             })
         _bundle_map["map"] = m
         _bundle_map["exp"] = _now() + API_CACHE_TTL
@@ -313,10 +407,25 @@ def get_bundle_map():
         return m
 
 
+# Order-side dimensions carried down onto each component. A component can be
+# sold inside bundles spanning several categories/channels, so the roll-up keeps
+# a per-component sales tally per value and reports the dominant one.
+_COMP_DIMS = [
+    ("parent_name",      "parent_name"),
+    ("sub_cat_name",     "sub_cat_name"),
+    ("sub_sub_cat_name", "sub_sub_cat_name"),
+    ("vco_channel_name", "channel"),
+]
+
+
 def component_summary(filters, limit=2000):
     """Component-Level Summary: split each filtered SKU's qty/revenue across its
     bundle components (qty*quantity_bundle, revenue*mrp_ratio) and aggregate by
-    component_product_variant_id. Respects all dashboard filters via ds._sub()."""
+    component_product_variant_id. Respects all dashboard filters via ds._sub().
+
+    Each component also carries its study-material type (from the bundle map)
+    and the category hierarchy + channel it sells the most through (from the
+    order rows) — the dimensions the final component-level query groups on."""
     key = json.dumps(filters or {}, sort_keys=True)
     with _cache_lock:
         hit = _component_cache.get(key)
@@ -327,13 +436,18 @@ def component_summary(filters, limit=2000):
     bmap = get_bundle_map()
     df = ds._sub(filters)
 
-    # Lightweight SKU roll-up (qty + revenue per product_variant_id) — far cheaper
-    # than sku_table(): no extra columns, no JSON round-trip.
-    g = (df.groupby("product_variant_id", observed=True)
+    # Lightweight SKU roll-up (qty + revenue per product_variant_id × the
+    # dimensions we carry down) — far cheaper than sku_table(): no extra
+    # columns, no JSON round-trip. observed=True keeps only real combinations.
+    dim_cols = [c for c, _ in _COMP_DIMS if c in df.columns]
+    g = (df.groupby(["product_variant_id"] + dim_cols, observed=True)
            .agg(qty=("qty", "sum"), revenue=("final_revenue", "sum")))
 
     agg = {}
-    for pvid, q, rev in zip(g.index.tolist(), g["qty"].tolist(), g["revenue"].tolist()):
+    for keys, q, rev in zip(g.index.tolist(), g["qty"].tolist(), g["revenue"].tolist()):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        pvid, dim_vals = keys[0], keys[1:]
         comps = bmap.get(str(pvid))
         if not comps:
             continue
@@ -349,14 +463,25 @@ def component_summary(filters, limit=2000):
                     "component_sku_code": c["sku"],
                     "component_product_type": c["ptype"],
                     "component_status": c["status"],
+                    "study_material_type": c["mtype"],
                     "qty_component": 0.0, "sales_component": 0.0, "bundles": 0,
+                    "_dims": [{} for _ in dim_cols],
                 }
+            share = rev * c["ratio"]
             a["qty_component"] += q * c["qb"]
-            a["sales_component"] += rev * c["ratio"]
+            a["sales_component"] += share
             a["bundles"] += 1
+            for i, v in enumerate(dim_vals):
+                tally = a["_dims"][i]
+                tally[v] = tally.get(v, 0.0) + share
     rows = list(agg.values())
     total_sales = sum(r["sales_component"] for r in rows) or 1.0
+    out_names = [name for col, name in _COMP_DIMS if col in dim_cols]
     for a in rows:
+        for i, name in enumerate(out_names):
+            tally = a["_dims"][i]
+            a[name] = str(max(tally, key=tally.get)) if tally else "Unknown"
+        del a["_dims"]
         a["qty_component"] = round(a["qty_component"], 2)
         a["sales_component"] = round(a["sales_component"], 2)
         a["asp"] = round(a["sales_component"] / a["qty_component"], 2) if a["qty_component"] else 0.0
@@ -432,32 +557,89 @@ def _run_orders_query_once(sql, limit):
             pass
 
 
+def _month_slices(date_from):
+    """Split [date_from, ∞) into month-sized [from, to) windows, NEWEST FIRST.
+
+    The full pull is ~1.3M rows and takes minutes; the network kills the
+    connection around the 100s mark, and retrying the whole query just hits the
+    same wall forever. Fetching a month at a time keeps every request short
+    enough to finish, and a drop costs one month instead of the entire load.
+
+    The newest slice is left open-ended (no upper bound) so rows dated beyond
+    today — the source has some — are still included, exactly as the unsliced
+    query would. Newest-first iteration preserves the overall order_date DESC
+    ordering once the slices are concatenated.
+    """
+    y, m, d = (int(x) for x in date_from.split("-"))
+    start = date(y, m, d)
+    today = date.today()
+    bounds = []                                   # month starts, ascending
+    cur = date(today.year, today.month, 1)
+    while cur > start:
+        bounds.append(cur)
+        cur = date(cur.year - 1, 12, 1) if cur.month == 1 else date(cur.year, cur.month - 1, 1)
+    bounds.reverse()
+    edges = [start] + bounds
+    slices = [(edges[i].isoformat(), edges[i + 1].isoformat()) for i in range(len(edges) - 1)]
+    slices.append((edges[-1].isoformat(), None))  # newest slice: open-ended
+    slices.reverse()                              # newest first
+    return slices
+
+
+# Per-slice retries. Cheap to redo one month, so allow more attempts than the
+# old whole-query retry budget.
+SLICE_RETRIES = int(os.getenv("TRINO_SLICE_RETRIES", "4"))
+
+
 def run_orders_query(days, limit):
-    """Query Trino and return (rows, elapsed_seconds, truncated). Retries transient
-    connection drops; on persistent failure raises a clear, actionable message."""
-    sql = dbm.build_query(days).rstrip()
-    if limit and limit > 0:
-        sql += f"\n    LIMIT {int(limit)}"
+    """Query Trino and return (rows, elapsed_seconds, truncated).
 
-    last = None
-    for attempt in range(TRINO_RETRIES + 1):
-        try:
-            return _run_orders_query_once(sql, limit)
-        except Exception as err:
-            last = err
-            if attempt < TRINO_RETRIES and _is_conn_error(err):
-                dbm.log(f"Trino query failed ({type(err).__name__}); retry {attempt+1}/{TRINO_RETRIES}…")
-                time.sleep(1.5 * (attempt + 1))
-                continue
-            break
+    Loads the window in monthly slices (see _month_slices) with per-slice
+    retries, so a single connection reset no longer restarts the entire pull.
+    """
+    slices = _month_slices(dbm.DATE_FROM)
+    all_rows, t_start, last = [], _now(), None
+    dbm.log(f"Loading dataset in {len(slices)} monthly slices (newest first)…")
 
-    if _is_conn_error(last):
-        host = os.getenv("TRINO_HOST", "trino-data-replica-1.penpencil.co")
-        raise RuntimeError(
-            f"Cannot reach Trino at {host}. The dashboard host must be on the PhysicsWallah "
-            f"network/VPN that can route to it (it resolves to a private 10.x address). "
-            f"Reconnect to the VPN/network and click Retry. (underlying: {last})")
-    raise last
+    for idx, (d_from, d_to) in enumerate(slices, 1):
+        sql = dbm.build_query(days, date_from=d_from, date_to=d_to).rstrip()
+        remaining = (limit - len(all_rows)) if (limit and limit > 0) else 0
+        if limit and limit > 0:
+            if remaining <= 0:
+                break
+            sql += f"\n    LIMIT {int(remaining)}"
+
+        label = f"{d_from}..{d_to or 'now'}"
+        for attempt in range(SLICE_RETRIES + 1):
+            try:
+                rows, secs, _ = _run_orders_query_once(sql, remaining)
+                all_rows.extend(rows)
+                dbm.log(f"  slice {idx}/{len(slices)} {label}: {len(rows)} rows in {secs:.1f}s "
+                        f"(total {len(all_rows)})")
+                last = None
+                break
+            except Exception as err:
+                last = err
+                if attempt < SLICE_RETRIES and _is_conn_error(err):
+                    dbm.log(f"  slice {idx}/{len(slices)} {label} failed "
+                            f"({type(err).__name__}); retry {attempt+1}/{SLICE_RETRIES}…")
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                break
+        if last is not None:
+            break                                  # slice exhausted its retries
+
+    if last is not None:
+        if _is_conn_error(last):
+            host = os.getenv("TRINO_HOST", "trino-data-replica-1.penpencil.co")
+            raise RuntimeError(
+                f"Cannot reach Trino at {host}. The dashboard host must be on the PhysicsWallah "
+                f"network/VPN that can route to it (it resolves to a private 10.x address). "
+                f"Reconnect to the VPN/network and click Retry. (underlying: {last})")
+        raise last
+
+    truncated = bool(limit) and len(all_rows) >= limit
+    return all_rows, _now() - t_start, truncated
 
 
 def get_orders_payload(days, limit):
@@ -979,6 +1161,139 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # ── Shared read-only handlers (served over BOTH POST and GET) ─────────────
+    # These endpoints only read data. They also answer GET — with `filters`
+    # passed as a URL-encoded JSON `?filters=` query param — so the dashboard
+    # keeps working behind corporate proxies/web-filters that allow GET but
+    # block POST. do_POST and do_GET both delegate here (single source of truth).
+    @staticmethod
+    def _filters_from_qs(qs):
+        # Prefer `q` (URL-safe base64 of the filters JSON) — used to disguise the
+        # request from corporate web filters. Fall back to plain `filters` JSON.
+        raw = None
+        q = (qs.get("q") or [None])[0]
+        if q:
+            try:
+                pad = "=" * (-len(q) % 4)
+                raw = base64.urlsafe_b64decode(q + pad).decode("utf-8")
+            except Exception:
+                raw = None
+        if raw is None:
+            raw = (qs.get("filters") or ["{}"])[0] or "{}"
+        try:
+            val = json.loads(raw)
+            return val if isinstance(val, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    # Decode a static-looking URL  /…/<endpoint>/<b64payload>.json  into
+    # (endpoint, params). Lets filtered requests masquerade as static files so
+    # corporate web filters (which block query strings / extension-less URLs)
+    # let them through. Returns (None, None) when the path isn't this shape.
+    _DISGUISED_ENDPOINTS = ("summary", "components", "rows", "export", "export-summary")
+
+    @classmethod
+    def _disguised_route(cls, path):
+        p = path[:-5] if path.endswith(".json") else path
+        parts = p.rsplit("/", 2)
+        if len(parts) < 2:
+            return None, None
+        endpoint, payload = parts[-2], parts[-1]
+        if endpoint not in cls._DISGUISED_ENDPOINTS:
+            return None, None
+        try:
+            pad = "=" * (-len(payload) % 4)
+            data = json.loads(base64.urlsafe_b64decode(payload + pad).decode("utf-8"))
+            return endpoint, (data if isinstance(data, dict) else {})
+        except Exception:
+            return None, None
+
+    def _respond_summary(self, filters):
+        try:
+            key = json.dumps(filters, sort_keys=True)
+            with _cache_lock:
+                hit = _summary_cache.get(key)
+                if hit and hit[0] > _now():
+                    return self._send_json(200, hit[1])
+            # Single-flight: serialize the heavy compute and re-check the cache
+            # after acquiring the lock, so stampeding duplicate requests reuse
+            # the first result instead of each recomputing (prevents the CPU
+            # thrash that caused 100s+ computes → 502).
+            with _compute_lock:
+                with _cache_lock:
+                    hit = _summary_cache.get(key)
+                    if hit and hit[0] > _now():
+                        return self._send_json(200, hit[1])
+                ds = get_dataset()
+                t0 = _now()
+                bundle = ds.summarize(filters)
+                body = json.dumps(bundle, ensure_ascii=False, default=str).encode("utf-8")
+                with _cache_lock:
+                    _summary_cache[key] = (_now() + API_CACHE_TTL, body)
+                dbm.log(f"summary {key[:80]} -> {len(bundle['by'].get('channel', []))} chans in {_now()-t0:.2f}s")
+            self._send_json(200, body)
+        except Exception as err:
+            dbm.log(f"ERROR /summary: {err}")
+            self._error(500, f"summary failed: {err}")
+
+    def _respond_components(self, filters):
+        try:
+            t0 = _now()
+            rows = component_summary(filters)
+            body = json.dumps({"components": rows, "meta": {"count": len(rows)}},
+                              ensure_ascii=False, default=str).encode("utf-8")
+            dbm.log(f"components -> {len(rows)} components in {_now()-t0:.2f}s")
+            self._send_json(200, body)
+        except Exception as err:
+            dbm.log(f"ERROR /components: {err}")
+            self._error(500, f"components failed: {err}")
+
+    def _respond_export_summary(self, kind, filters):
+        try:
+            t0 = _now()
+            rows = summary_export_rows(kind, filters)
+            csv_text = _rows_to_csv(rows)
+            dbm.log(f"export-summary {kind}: {len(rows)} rows in {_now()-t0:.2f}s")
+            self._send_csv(csv_text, f"{kind}_summary.csv")
+        except ValueError as err:
+            self._error(400, str(err))
+        except Exception as err:
+            dbm.log(f"ERROR /export-summary: {err}")
+            self._error(500, f"export-summary failed: {err}")
+
+    def _respond_export(self, filters, search=""):
+        try:
+            ds = get_dataset()
+            csv_text = ds.export_csv(filters, search=str(search))
+            data = csv_text.encode("utf-8")
+            accepts_gzip = "gzip" in (self.headers.get("Accept-Encoding") or "")
+            out = gzip.compress(data) if accepts_gzip and len(data) > 1024 else data
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self._cors()
+            self.send_header("Content-Disposition", "attachment; filename=raw_orders.csv")
+            if out is not data:
+                self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+            dbm.log(f"export CSV: {len(csv_text)} chars")
+        except Exception as err:
+            dbm.log(f"ERROR /export: {err}")
+            self._error(500, f"export failed: {err}")
+
+    def _respond_rows(self, filters, offset=0, limit=200, search=""):
+        try:
+            ds = get_dataset()
+            page = ds.rows_page(filters,
+                                offset=int(offset),
+                                limit=min(int(limit), 2000),
+                                search=str(search))
+            self._send_json(200, json.dumps(page, ensure_ascii=False, default=str).encode("utf-8"))
+        except Exception as err:
+            dbm.log(f"ERROR /rows: {err}")
+            self._error(500, f"rows failed: {err}")
+
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
@@ -986,103 +1301,120 @@ class Handler(BaseHTTPRequestHandler):
         filters = body.get("filters", body) or {}
 
         # ── Auth ──
-        if path.endswith("/auth/check"):
-            email = (body.get("email") or "").strip().lower()
-            with _users_lock:
-                exists = email in _load_users()
-            return self._send_json(200, json.dumps({"exists": exists}).encode("utf-8"))
-
+        # NOTE: there is no /auth/check (it disclosed account existence — report
+        # F-22). The client picks Sign in vs Create account itself.
         ip = self.headers.get("X-Forwarded-For") or self.client_address[0]
+
+        def _auth_ok(email_, u_):
+            """Common success path: bump stats, mint an expiring token, persist."""
+            u_["lastLogin"] = _now_iso()
+            u_["logins"] = u_.get("logins", 0) + 1
+            token_ = _mint_token(u_)
+            return {"token": token_, "email": email_, "expiresAt": u_["tokenExp"]}
 
         if path.endswith("/auth/register"):
             email = (body.get("email") or "").strip().lower()
             pw = body.get("password") or ""
-            if not email or "@" not in email or len(pw) < 4:
-                _audit(email, "register", "invalid", pw, ip)
-                return self._error(400, "Valid email and a password (min 4 chars) are required.")
+            if not email or "@" not in email or len(pw) < MIN_PW_LEN:
+                _audit(email, "register", "invalid", ip)
+                return self._error(400, f"Valid email and a password (min {MIN_PW_LEN} chars) are required.")
             with _users_lock:
                 users = _load_users()
                 if email in users:
-                    _audit(email, "register", "already_exists", pw, ip)
+                    _audit(email, "register", "already_exists", ip)
                     return self._error(409, "This email is already registered — please log in.")
-                token = secrets.token_hex(16)
-                users[email] = {"password": pw, "createdAt": _now_iso(),
-                                "lastLogin": _now_iso(), "logins": 1, "token": token}
+                users[email] = {"password": _hash_secret(pw), "createdAt": _now_iso(),
+                                "lastLogin": _now_iso(), "logins": 0}
+                resp = _auth_ok(email, users[email])
                 _save_users(users)
-            _audit(email, "register", "success", pw, ip)
+            _audit(email, "register", "success", ip)
             dbm.log(f"AUTH register: {email}")
-            return self._send_json(200, json.dumps({"token": token, "email": email}).encode("utf-8"))
+            return self._send_json(200, json.dumps(resp).encode("utf-8"))
 
         if path.endswith("/auth/forgot"):
             email = (body.get("email") or "").strip().lower()
             emailed = False
+            code = None
             with _users_lock:
                 users = _load_users()
                 u = users.get(email)
                 if u:
                     code = f"{secrets.randbelow(900000) + 100000}"
-                    u["reset"] = {"code": code, "exp": _now() + RESET_TTL}
+                    # Store only a HASH of the code (report F-07), with an attempt counter.
+                    u["reset"] = {"codeHash": _hash_secret(code), "exp": _now() + RESET_TTL, "tries": 0}
                     _save_users(users)
-            if u:
+            if code is not None:
                 emailed = send_reset_email(email, code)
-                _audit(email, "forgot", "emailed" if emailed else "code_logged", None, ip)
+                _audit(email, "forgot", "emailed" if emailed else "not_delivered", ip)
             else:
-                _audit(email, "forgot", "no_account", None, ip)
-            # Generic response (don't reveal whether the email exists).
+                _audit(email, "forgot", "no_account", ip)
+            # Generic response — never reveal whether the email exists.
             return self._send_json(200, json.dumps({
                 "sent": True, "emailed": emailed,
-                "note": None if emailed else "Email not configured — ask admin for your code."
+                "note": None if emailed else "If that email has an account, a reset code has been sent."
             }).encode("utf-8"))
 
         if path.endswith("/auth/reset"):
             email = (body.get("email") or "").strip().lower()
             code = (body.get("code") or "").strip()
             pw = body.get("password") or ""
-            if len(pw) < 4:
-                return self._error(400, "New password must be at least 4 characters.")
+            if len(pw) < MIN_PW_LEN:
+                return self._error(400, f"New password must be at least {MIN_PW_LEN} characters.")
             with _users_lock:
                 users = _load_users()
                 u = users.get(email)
                 r = (u or {}).get("reset")
                 if not u or not r:
-                    _audit(email, "reset", "no_request", None, ip)
+                    _audit(email, "reset", "no_request", ip)
                     return self._error(400, "No reset was requested for this email.")
                 if _now() > r.get("exp", 0):
-                    _audit(email, "reset", "expired", None, ip)
+                    u.pop("reset", None); _save_users(users)
+                    _audit(email, "reset", "expired", ip)
                     return self._error(400, "Reset code has expired — request a new one.")
-                if r.get("code") != code:
-                    _audit(email, "reset", "wrong_code", None, ip)
+                ok, _legacy = _verify_secret(code, r.get("codeHash"))
+                if not ok:
+                    r["tries"] = r.get("tries", 0) + 1
+                    if r["tries"] >= RESET_MAX_TRIES:
+                        u.pop("reset", None)  # burn the code after too many guesses
+                        _audit(email, "reset", "locked_out", ip)
+                        _save_users(users)
+                        return self._error(429, "Too many incorrect codes — request a new reset code.")
+                    _save_users(users)
+                    _audit(email, "reset", "wrong_code", ip)
                     return self._error(401, "Incorrect reset code.")
-                u["password"] = pw
+                u["password"] = _hash_secret(pw)
                 u.pop("reset", None)
-                u["lastLogin"] = _now_iso()
-                token = u.get("token") or secrets.token_hex(16)
-                u["token"] = token
+                resp = _auth_ok(email, u)
                 _save_users(users)
-            _audit(email, "reset", "success", pw, ip)
+            _clear_login_fails(email)
+            _audit(email, "reset", "success", ip)
             dbm.log(f"AUTH reset: {email}")
-            return self._send_json(200, json.dumps({"token": token, "email": email}).encode("utf-8"))
+            return self._send_json(200, json.dumps(resp).encode("utf-8"))
 
         if path.endswith("/auth/login"):
             email = (body.get("email") or "").strip().lower()
             pw = body.get("password") or ""
+            if _login_locked(email):
+                _audit(email, "login", "locked_out", ip)
+                return self._error(429, "Too many failed attempts. Please wait a few minutes and try again.")
             with _users_lock:
                 users = _load_users()
                 u = users.get(email)
-                if not u:
-                    _audit(email, "login", "no_account", pw, ip)
-                    return self._error(404, "No account for this email — please sign up.")
-                if u.get("password") != pw:
-                    _audit(email, "login", "wrong_password", pw, ip)
-                    return self._error(401, "Incorrect password.")
-                u["lastLogin"] = _now_iso()
-                u["logins"] = u.get("logins", 0) + 1
-                token = u.get("token") or secrets.token_hex(16)
-                u["token"] = token
+                ok, legacy = _verify_secret(pw, (u or {}).get("password")) if u else (False, False)
+                if not u or not ok:
+                    # Uniform response for unknown-account vs wrong-password (report F-22).
+                    if u:
+                        _record_login_fail(email)  # only throttle real accounts
+                    _audit(email, "login", "no_account" if not u else "wrong_password", ip)
+                    return self._error(401, "Invalid email or password.")
+                if legacy:
+                    u["password"] = _hash_secret(pw)  # upgrade legacy plaintext to a hash
+                resp = _auth_ok(email, u)
                 _save_users(users)
-            _audit(email, "login", "success", pw, ip)
+            _clear_login_fails(email)
+            _audit(email, "login", "success", ip)
             dbm.log(f"AUTH login: {email}")
-            return self._send_json(200, json.dumps({"token": token, "email": email}).encode("utf-8"))
+            return self._send_json(200, json.dumps(resp).encode("utf-8"))
 
         # ── Chatbot (EcomWallah → Groq LLM) ──
         if path.endswith("/chat"):
@@ -1124,87 +1456,22 @@ class Handler(BaseHTTPRequestHandler):
                 }, ensure_ascii=False).encode("utf-8"))
 
         if path.endswith("/summary"):
-            try:
-                key = json.dumps(filters, sort_keys=True)
-                with _cache_lock:
-                    hit = _summary_cache.get(key)
-                    if hit and hit[0] > _now():
-                        return self._send_json(200, hit[1])
-                ds = get_dataset()
-                t0 = _now()
-                bundle = ds.summarize(filters)
-                body = json.dumps(bundle, ensure_ascii=False, default=str).encode("utf-8")
-                with _cache_lock:
-                    _summary_cache[key] = (_now() + API_CACHE_TTL, body)
-                dbm.log(f"summary {key[:80]} -> {len(bundle['by'].get('channel', []))} chans in {_now()-t0:.2f}s")
-                self._send_json(200, body)
-            except Exception as err:
-                dbm.log(f"ERROR /summary: {err}")
-                self._error(500, f"summary failed: {err}")
-            return
+            return self._respond_summary(filters)
 
         if path.endswith("/components"):
-            try:
-                t0 = _now()
-                rows = component_summary(filters)
-                body = json.dumps({"components": rows, "meta": {"count": len(rows)}},
-                                   ensure_ascii=False, default=str).encode("utf-8")
-                dbm.log(f"components -> {len(rows)} components in {_now()-t0:.2f}s")
-                self._send_json(200, body)
-            except Exception as err:
-                dbm.log(f"ERROR /components: {err}")
-                self._error(500, f"components failed: {err}")
-            return
+            return self._respond_components(filters)
 
         if path.endswith("/export-summary"):
-            kind = (body.get("kind") or "").lower()
-            try:
-                t0 = _now()
-                rows = summary_export_rows(kind, filters)
-                csv_text = _rows_to_csv(rows)
-                dbm.log(f"export-summary {kind}: {len(rows)} rows in {_now()-t0:.2f}s")
-                self._send_csv(csv_text, f"{kind}_summary.csv")
-            except ValueError as err:
-                self._error(400, str(err))
-            except Exception as err:
-                dbm.log(f"ERROR /export-summary: {err}")
-                self._error(500, f"export-summary failed: {err}")
-            return
+            return self._respond_export_summary((body.get("kind") or "").lower(), filters)
 
         if path.endswith("/export"):
-            try:
-                ds = get_dataset()
-                csv_text = ds.export_csv(filters, search=str(body.get("search", "")))
-                data = csv_text.encode("utf-8")
-                accepts_gzip = "gzip" in (self.headers.get("Accept-Encoding") or "")
-                out = gzip.compress(data) if accepts_gzip and len(data) > 1024 else data
-                self.send_response(200)
-                self.send_header("Content-Type", "text/csv; charset=utf-8")
-                self._cors()
-                self.send_header("Content-Disposition", "attachment; filename=raw_orders.csv")
-                if out is not data:
-                    self.send_header("Content-Encoding", "gzip")
-                self.send_header("Content-Length", str(len(out)))
-                self.end_headers()
-                self.wfile.write(out)
-                dbm.log(f"export CSV: {len(csv_text)} chars")
-            except Exception as err:
-                dbm.log(f"ERROR /export: {err}")
-                self._error(500, f"export failed: {err}")
-            return
+            return self._respond_export(filters, search=body.get("search", ""))
 
         if path.endswith("/rows"):
-            try:
-                ds = get_dataset()
-                page = ds.rows_page(filters,
-                                    offset=int(body.get("offset", 0)),
-                                    limit=min(int(body.get("limit", 200)), 2000),
-                                    search=str(body.get("search", "")))
-                self._send_json(200, json.dumps(page, ensure_ascii=False, default=str).encode("utf-8"))
-            except Exception as err:
-                dbm.log(f"ERROR /rows: {err}")
-                self._error(500, f"rows failed: {err}")
-            return
+            return self._respond_rows(filters,
+                                      offset=body.get("offset", 0),
+                                      limit=body.get("limit", 200),
+                                      search=body.get("search", ""))
 
         self._error(404, f"not found: {parsed.path}")
 
@@ -1213,23 +1480,27 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
         qs = parse_qs(parsed.query)
 
-        # Match on the endpoint name so any prefix works (/api/v1, /v1, none) —
-        # handy behind a gateway that rewrites the base path.
-        if path.endswith("/auth/log"):
-            try:
-                with open(AUTH_LOG_FILE, "r", encoding="utf-8") as f:
-                    entries = [json.loads(ln) for ln in f if ln.strip()]
-            except (FileNotFoundError, ValueError):
-                entries = []
-            return self._send_json(200, json.dumps({"attempts": entries}, ensure_ascii=False).encode("utf-8"))
+        # Disguised static-looking read requests: /…/<endpoint>/<b64>.json
+        ep, dp = self._disguised_route(path)
+        if ep == "summary":
+            return self._respond_summary(dp.get("filters") or {})
+        if ep == "components":
+            return self._respond_components(dp.get("filters") or {})
+        if ep == "rows":
+            return self._respond_rows(dp.get("filters") or {},
+                                      offset=dp.get("offset", 0),
+                                      limit=dp.get("limit", 200),
+                                      search=dp.get("search", ""))
+        if ep == "export":
+            return self._respond_export(dp.get("filters") or {}, search=dp.get("search", ""))
+        if ep == "export-summary":
+            return self._respond_export_summary((dp.get("kind") or "").lower(),
+                                                dp.get("filters") or {})
 
-        if path.endswith("/auth/users"):
-            with _users_lock:
-                users = _load_users()
-            listing = [{"email": e, "password": u.get("password"), "createdAt": u.get("createdAt"),
-                        "lastLogin": u.get("lastLogin"), "logins": u.get("logins", 0)}
-                       for e, u in users.items()]
-            return self._send_json(200, json.dumps({"users": listing}, ensure_ascii=False).encode("utf-8"))
+        # NOTE: the /auth/users and /auth/log endpoints were removed — they
+        # exposed the entire credential store and audit log without any
+        # authentication (report F-02). User administration must never be a
+        # public, unauthenticated API.
 
         if path.endswith("/health") or path == "/health":
             self._send_json(200, json.dumps({
@@ -1259,6 +1530,29 @@ class Handler(BaseHTTPRequestHandler):
                 dbm.log(f"ERROR serving /orders: {err}")
                 self._error(500, f"query failed: {err}")
             return
+
+        # ── Read-only endpoints, GET variant (filters in ?filters=<json>) ──
+        # Mirrors the POST handlers so the dashboard works behind proxies that
+        # block POST. Same underlying handlers → identical responses.
+        if path.endswith("/summary"):
+            return self._respond_summary(self._filters_from_qs(qs))
+
+        if path.endswith("/components"):
+            return self._respond_components(self._filters_from_qs(qs))
+
+        if path.endswith("/export-summary"):
+            return self._respond_export_summary((qs.get("kind") or [""])[0].lower(),
+                                                self._filters_from_qs(qs))
+
+        if path.endswith("/export"):
+            return self._respond_export(self._filters_from_qs(qs),
+                                        search=(qs.get("search") or [""])[0])
+
+        if path.endswith("/rows"):
+            return self._respond_rows(self._filters_from_qs(qs),
+                                      offset=(qs.get("offset") or ["0"])[0],
+                                      limit=(qs.get("limit") or ["200"])[0],
+                                      search=(qs.get("search") or [""])[0])
 
         self._error(404, f"not found: {parsed.path}")
 

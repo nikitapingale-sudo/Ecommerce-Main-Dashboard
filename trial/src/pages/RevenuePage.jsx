@@ -57,7 +57,7 @@ export default function RevenuePage({ data }) {
       <KPIGrid cols={4}>
         <KPI icon="💰" label="Gross Revenue"    value={fmtCr(m.rev)}        sub={`AOV ${fmt(m.aov)}`}  color="#16a34a" trend={wowRev}/>
         <KPI icon="🚚" label="Shipping Charges" value={fmtCr(m.delCharges)} sub="Collected"            color="#7c3aed"/>
-        <KPI icon="💲" label="ASP / Unit"       value={fmt(m.asp)}        sub="Avg selling price"    color="#2563eb"/>
+        <KPI icon="₹" label="ASP / Unit"       value={fmt(m.asp)}        sub="Avg selling price"    color="#2563eb"/>
         <KPI icon="🛒" label="AOV"              value={fmt(m.aov)}        sub="Avg order value"      color="#0891b2"/>
       </KPIGrid>
 
