@@ -98,7 +98,10 @@ API_HOST         = os.getenv("API_HOST", "127.0.0.1")
 API_PORT         = int(os.getenv("API_PORT") or os.getenv("PORT") or "8000")
 API_DEFAULT_DAYS = int(os.getenv("API_DEFAULT_DAYS", "7"))
 API_MAX_LIMIT    = int(os.getenv("API_MAX_LIMIT", "1000000"))
-API_CACHE_TTL    = int(os.getenv("API_CACHE_TTL", "3600"))
+# 6h. Refreshes are now non-blocking (stale-while-revalidate), but each one is
+# still 8 Trino slices against a cluster that has been unreliable — so keep them
+# infrequent. Orders data is not real-time; a few hours of staleness is fine.
+API_CACHE_TTL    = int(os.getenv("API_CACHE_TTL", "21600"))
 
 # ── LLM (Groq) config — powers the EcomWallah chatbot. Key stays server-side. ──
 GROQ_API_KEY     = os.getenv("GROQ_API_KEY", "")
@@ -330,35 +333,87 @@ def _now():
     return time.time()
 
 
+# Serialises cold-start loads, and guards the "is a refresh already running?"
+# flag. Distinct from _dataset_lock, which only guards the dict itself.
+_dataset_load_lock = threading.Lock()
+_refresh_lock = threading.Lock()
+_refresh_running = False
+# After a failed background refresh, wait this long before trying again so a
+# broken Trino doesn't get hammered once per request.
+REFRESH_RETRY_DELAY = int(os.getenv("REFRESH_RETRY_DELAY", "300"))
+
+
+def _load_dataset():
+    """Pull the whole window and swap it in. Returns (dataset, elapsed_seconds)."""
+    # limit=0 => NO cap. API_MAX_LIMIT protects a single /orders *response*
+    # (browser payload size); applying it here instead silently truncated the
+    # in-memory dataset — the load stopped mid-window at exactly 1,000,000
+    # rows and the oldest months were never fetched, so every aggregate was
+    # computed on a partial dataset. The dashboard aggregates server-side and
+    # only ever returns small bundles, so the dataset itself must be complete.
+    rows, elapsed, _ = run_orders_query(days=0, limit=0)
+    ds = aggregate.Dataset(rows)
+    with _dataset_lock:
+        _dataset["ds"] = ds
+        _dataset["exp"] = _now() + API_CACHE_TTL
+    with _cache_lock:
+        _summary_cache.clear()      # invalidate stale per-filter bundles
+        _component_cache.clear()
+    return ds, elapsed
+
+
+def _start_background_refresh():
+    """Kick off a refresh in a worker thread, at most one at a time."""
+    global _refresh_running
+    with _refresh_lock:
+        if _refresh_running:
+            return
+        _refresh_running = True
+
+    def _run():
+        global _refresh_running
+        try:
+            dbm.log("Dataset stale — refreshing in background (serving current data meanwhile)…")
+            ds, elapsed = _load_dataset()
+            dbm.log(f"Dataset refreshed: {ds.n} rows in {elapsed:.1f}s")
+        except Exception as err:
+            # Keep serving the existing data; try again after a cool-off.
+            with _dataset_lock:
+                _dataset["exp"] = _now() + REFRESH_RETRY_DELAY
+            dbm.log(f"Background refresh FAILED ({type(err).__name__}: {err}); "
+                    f"still serving previous data, retrying in {REFRESH_RETRY_DELAY}s")
+        finally:
+            with _refresh_lock:
+                _refresh_running = False
+
+    threading.Thread(target=_run, name="dataset-refresh", daemon=True).start()
+
+
 def get_dataset():
-    """Load the full curated dataset into memory once; refresh after TTL.
+    """Return the in-memory dataset, refreshing in the background when stale.
 
     The whole window (DATE_FROM..DATE_TO) is fetched a single time and kept
     in memory so /summary and /rows aggregate locally instead of re-scanning
     Trino on every filter change.
     """
-    with _dataset_lock:
-        if _dataset["ds"] is not None and _dataset["exp"] > _now():
+    ds = _dataset["ds"]
+    if ds is not None:
+        # STALE-WHILE-REVALIDATE. Never block a request on a reload: a full
+        # refresh is 8 Trino slices (minutes, and far worse when the cluster is
+        # degraded), while the Vercel proxy in front of the tunnel gives up
+        # around 120s. Blocking here meant the first request after every TTL
+        # expiry got a 502. Serve what we have and refresh behind the request.
+        if _dataset["exp"] <= _now():
+            _start_background_refresh()
+        return ds
+
+    # Cold start only: there is nothing to serve, so this one must block.
+    with _dataset_load_lock:
+        if _dataset["ds"] is not None:
             return _dataset["ds"]
-    # Build outside the lock would risk a double-load; keep it simple and
-    # load under the lock (first request pays the ~60s cost, others wait).
-    with _dataset_lock:
-        if _dataset["ds"] is not None and _dataset["exp"] > _now():
-            return _dataset["ds"]
-        dbm.log("Loading curated dataset into memory (one-time per TTL)...")
-        # limit=0 => NO cap. API_MAX_LIMIT protects a single /orders *response*
-        # (browser payload size); applying it here instead silently truncated the
-        # in-memory dataset — the load stopped mid-window at exactly 1,000,000
-        # rows and the oldest months were never fetched, so every aggregate was
-        # computed on a partial dataset. The dashboard aggregates server-side and
-        # only ever returns small bundles, so the dataset itself must be complete.
-        rows, elapsed, _ = run_orders_query(days=0, limit=0)
-        ds = aggregate.Dataset(rows)
-        _dataset["ds"] = ds
-        _dataset["exp"] = _now() + API_CACHE_TTL
-        _summary_cache.clear()  # invalidate stale per-filter bundles
-        _component_cache.clear()
-        dbm.log(f"Dataset ready: {ds.n} rows in {elapsed:.1f}s (cached {API_CACHE_TTL}s)")
+        dbm.log("Loading curated dataset into memory (cold start)...")
+        ds, elapsed = _load_dataset()
+        dbm.log(f"Dataset ready: {ds.n} rows in {elapsed:.1f}s (fresh for {API_CACHE_TTL}s)")
         return ds
 
 

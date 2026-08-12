@@ -166,7 +166,8 @@ _ITEM_STATUS_MAP = _mapping([
     ("Pending",       ["Pending"]),
     ("Return/Refund", ["Refund_Failed", "Refund_Initiated", "Redispatch", "Replaced",
                        "Replacement_Initiated", "Replacement_Requested", "Return_Failed",
-                       "Return_Initiated", "Return_Requested", "Returned"]),
+                       "Return_Initiated", "Return_Requested", "Returned",
+                       "returned_failed"]),   # 3P spelling — distinct from Return_Failed
     ("RTO/Lost",      ["Lost", "Rto", "Shipped & Returned"]),
     ("Shipped",       ["Shipped", "Shipped Complete"]),
 ])

@@ -41,6 +41,23 @@ PENDENCY_TABLE_COLS = [
     "item_status_group", "final_order_status", "qty", "final_revenue",
     "city", "state", "warehouse", "delivery_partner",
 ]
+#  ── Net (realisable) revenue ─────────────────────────────────────────────────
+#  "Final Revenue" excludes money that will not be realised, so the number can be
+#  read without applying status filters by hand. A line is excluded when ANY of:
+#    · it has a refunded_date          (has_refunded_date == 1)
+#    · it has a cancelled_date         (has_cancelled_date == 1)
+#    · its item status group is one of NET_REV_EXCLUDED_GROUPS
+#  The groups below cover, across all three status vocabularies:
+#    Cancelled     <- 'Cancelled', 'Closed', 'cancelled' (3P)
+#    Return/Refund <- 'Refunded', 'Returned' (= raw 'Shipped & Returned'),
+#                     'returned' (3P), 'returned_failed' (3P)
+#  RTO/Lost ('Return/RTO', 'lost') is deliberately NOT excluded — that revenue
+#  still counts. Only cancelled and refunded/returned money comes out.
+#  The date checks are not redundant with the status check: on the Viniculum leg
+#  the item status is derived FROM those dates, but on the 3P leg the status is
+#  the raw marketplace status and refunded_at can be set independently.
+NET_REV_EXCLUDED_GROUPS = ("Cancelled", "Return/Refund")
+
 ORDER, LINE = "vco_external_order_number", "unique_id"
 NUMERIC = ["qty", "final_revenue", "mrp", "vco_mrp", "vco_unit_price", "delivery_charge", "total_amount",
            "has_cancelled_date", "has_refunded_date"]
@@ -146,6 +163,22 @@ class Dataset:
         refund_amt = float(df.loc[df["has_refunded_date"] == 1, "final_revenue"].sum()) if "has_refunded_date" in df.columns else 0.0
         # Order Amount = sum of line item amounts (vc_order_item_amount = final_revenue).
         order_amount = float(df["final_revenue"].sum()) if len(df) else 0.0
+        # ── Net / "Final" revenue: drop cancelled + refunded + returned/RTO ──
+        if len(df):
+            keep = ~df["item_status_group"].astype("string").isin(NET_REV_EXCLUDED_GROUPS)
+            if "has_cancelled_date" in df.columns:
+                keep &= df["has_cancelled_date"] == 0
+            if "has_refunded_date" in df.columns:
+                keep &= df["has_refunded_date"] == 0
+            ndf = df[keep.to_numpy()]
+            net_rev = float(ndf["final_revenue"].sum())
+            net_qty = float(ndf["qty"].sum())
+            net_orders = int(ndf["_oid"].nunique())
+            net_lines = int(ndf["_lid"].nunique())
+        else:
+            net_rev = net_qty = 0.0
+            net_orders = net_lines = 0
+        excluded_rev = rev - net_rev
         return {
             "orders": orders, "lines": lines, "qty": qty, "rev": rev, "mrpSum": mrp_sum,
             "discount": discount, "discPct": (discount / mrp_sum * 100) if mrp_sum > 0 else 0,
@@ -168,6 +201,15 @@ class Dataset:
             "orderAmount": order_amount,
             "cancelledAmount": canc_amt, "refundAmount": refund_amt,
             "codPct": (cod_orders / orders * 100) if orders else 0,
+            # ── Final (net realisable) revenue ──
+            "netRevenue": net_rev,
+            "netQty": net_qty,
+            "netOrders": net_orders,
+            "netLines": net_lines,
+            "excludedRevenue": excluded_rev,
+            "netRevPct": (net_rev / rev * 100) if rev else 0,
+            "netAov": (net_rev / net_orders) if net_orders else 0,
+            "netAsp": (net_rev / net_qty) if net_qty > 0 else 0,
         }
 
     # ── generic group-by ──
