@@ -22,6 +22,8 @@ import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE } from './utils/dataEngi
 
 const DEFAULT_FILTERS = {
   dateFrom:'', dateTo:'',
+  deliveryDateFrom:'', deliveryDateTo:'',
+  refundedDateFrom:'', refundedDateTo:'',
   channels:[], warehouses:[], states:[], payments:[],
   oms:[], orderTypes:[], purchaseLevels:[], categories:[],
   statuses:[], finCats:[], orderCats:[], couriers:[], coupons:[],
@@ -123,8 +125,11 @@ export default function App({ userEmail, onLogout }) {
   const filtOrders = bundle.metrics.orders;
   const TOTAL = totalOrders;
   const activeFilters = (() => {
+    const dateKeys = new Set(['dateFrom', 'dateTo', 'deliveryDateFrom', 'deliveryDateTo', 'refundedDateFrom', 'refundedDateTo']);
     let n = (filters.dateFrom || filters.dateTo) ? 1 : 0;
-    Object.entries(filters).forEach(([k, v]) => { if (k !== 'dateFrom' && k !== 'dateTo' && v?.length) n++; });
+    if (filters.deliveryDateFrom || filters.deliveryDateTo) n++;
+    if (filters.refundedDateFrom || filters.refundedDateTo) n++;
+    Object.entries(filters).forEach(([k, v]) => { if (!dateKeys.has(k) && v?.length) n++; });
     return n;
   })();
   const updatedAt = lastUpdated
@@ -170,9 +175,6 @@ export default function App({ userEmail, onLogout }) {
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:1 }}>{PAGE_EYEBROW[page]}</div>
             <div style={{ fontFamily:'var(--serif)', fontWeight:700, fontSize:20, color:'var(--text)', letterSpacing:'-0.01em' }}>{PAGE_LABELS[page]}</div>
-            <div style={{ fontSize:11.5, color:'var(--text3)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              <b style={{ color:'var(--accent)', fontWeight:700 }}>{filtOrders.toLocaleString()}</b> of {TOTAL.toLocaleString()} orders
-            </div>
           </div>
 
           {/* Global search (⌘K) */}
@@ -209,9 +211,6 @@ export default function App({ userEmail, onLogout }) {
             </div>
             <ChevronDown size={15} color="var(--text3)"/>
           </button>
-          <span className="hide-mobile" style={{ fontSize:11, color:'var(--text3)', whiteSpace:'nowrap', flexShrink:0 }}>
-            <b style={{ color:'var(--text)' }}>{(bundle.meta.filteredRows||0).toLocaleString()}</b> / {(bundle.meta.totalRows||0).toLocaleString()} rows
-          </span>
 
           {/* Avatar + logout menu */}
           <div style={{ position:'relative', flexShrink:0 }}>

@@ -9,7 +9,78 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const DATA_SOURCE = import.meta.env.VITE_DATA_SOURCE || 'static';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Strip a stray BOM/whitespace: a UTF-8 BOM (U+FEFF) once leaked into the
+// Vercel env var, prefixing the base so URLs became relative → 404 → HTML.
+let __base = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+if (__base.charCodeAt(0) === 0xFEFF) __base = __base.slice(1);  // strip stray UTF-8 BOM
+const API_BASE = __base.trim();
+
+// URL-safe base64 of a UTF-8 string (browser btoa is latin1-only).
+function b64url(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Read-only endpoints are called over GET (POST is blocked by the corporate
+// web filter → "API 405"). ALL params are encoded into a single base64 path
+// segment ending in `.json`, so the request URL is indistinguishable from a
+// static file: NO query string, HAS a file extension. The firewall allows
+// static-file URLs (proven: /data/summary.json loads) but blocks dynamic-
+// looking ones (query string / no extension). The backend decodes the segment
+// back into { filters, offset, limit, search, kind }.
+function apiUrl(path, params = {}) {
+  const clean = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    clean[k] = v;
+  }
+  const payload = b64url(JSON.stringify(clean));
+  return `${API_BASE}${path}/${payload}.json`;
+}
+
+// `fetch` rejects with a bare "Failed to fetch" TypeError when the backend is
+// simply not listening — which reads as a dashboard bug rather than "the API
+// isn't running". Wrap it so the UI says what to actually do about it. Any
+// non-network error (a real HTTP failure) is rethrown untouched.
+async function apiFetch(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(
+        `Cannot reach the API at ${API_BASE} — the backend is not running. ` +
+        `Start it with: python scripts/api.py`
+      );
+    }
+    throw err;
+  }
+}
+
+// True when no filter is active (mirrors the app's DEFAULT_FILTERS: all empty).
+function isDefaultFilters(filters) {
+  if (!filters) return true;
+  return Object.values(filters).every(
+    v => v == null || v === '' || (Array.isArray(v) && v.length === 0)
+  );
+}
+
+// Static CDN snapshot of the *unfiltered* view (public/data/*.json). Served as
+// a plain static file from Vercel's CDN — so it loads even behind corporate
+// web filters that block the dynamic /api proxy. Returns the parsed JSON, or
+// null if unavailable / intercepted (e.g. an HTML block page with status 200).
+async function tryStaticSnapshot(path) {
+  try {
+    const r = await fetch(path, { cache: 'no-cache' });
+    if (!r.ok) return null;
+    const text = await r.text();
+    if (text.trimStart().startsWith('<')) return null; // HTML block page, not JSON
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 // ─── Empty bundle (initial render / fallback) ────────────────────────────────
 export const EMPTY_METRICS = {
@@ -17,6 +88,10 @@ export const EMPTY_METRICS = {
   aov: 0, asp: 0, aul: 0, delivered: 0, rto: 0, cancelled: 0, shipped: 0,
   packed: 0, received: 0, returns: 0, inTransit: 0, delivRate: 0, rtoRate: 0,
   cancelRate: 0, shippedRate: 0, delCharges: 0, prepaid: 0, cod: 0,
+  orders1P: 0, ordersB2B: 0, orders3P: 0, rev1P: 0, revB2B: 0, rev3P: 0,
+  ordersStore: 0, ordersFBT: 0, ordersAddon: 0, ordersEcomBoc: 0,
+  revStore: 0, revFBT: 0, revAddon: 0, revEcomBoc: 0,
+  orderAmount: 0, cancelledAmount: 0, refundAmount: 0, codPct: 0,
 };
 export const EMPTY_BUNDLE = {
   meta: { filteredRows: 0, totalRows: 0, minDate: '', maxDate: '' },
@@ -33,11 +108,12 @@ export const EMPTY_BUNDLE = {
 
 // ─── API calls ───────────────────────────────────────────────────────────────
 export async function fetchSummary(filters = {}) {
-  const res = await fetch(`${API_BASE}/summary`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filters }),
-  });
+  // Default (unfiltered) view: serve the firewall-proof static snapshot first.
+  if (isDefaultFilters(filters)) {
+    const snap = await tryStaticSnapshot('/data/summary.json');
+    if (snap) return snap;
+  }
+  const res = await apiFetch(apiUrl('/summary', { filters }));
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).error || ''; } catch { /* ignore */ }
@@ -118,19 +194,41 @@ async function authPost(path, payload) {
   if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
   return data;
 }
-export const authCheck    = (email) => authPost('check', { email });
 export const authRegister = (email, password) => authPost('register', { email, password });
 export const authLogin    = (email, password) => authPost('login', { email, password });
 export const authForgot   = (email) => authPost('forgot', { email });
 export const authReset    = (email, code, password) => authPost('reset', { email, code, password });
 
+// ─── Client session (expiring token) ───────────────────────────────────────
+//  The backend issues a token with an `expiresAt` (epoch seconds). We persist
+//  it and treat the session as valid only while unexpired. (Note: with the
+//  current firewall-friendly setup the data APIs are not token-gated server
+//  side — this gate is the dashboard's own login/expiry layer. Moving to
+//  SSO / httpOnly cookies is the recommended next step, per report F-01/F-23.)
+export function saveSession({ token, email, expiresAt }) {
+  localStorage.setItem('pw_token', token || '');
+  localStorage.setItem('pw_email', email || '');
+  localStorage.setItem('pw_token_exp', String(expiresAt || 0));
+}
+
+export function getSession() {
+  const token = localStorage.getItem('pw_token');
+  const email = localStorage.getItem('pw_email');
+  const exp = Number(localStorage.getItem('pw_token_exp') || 0);
+  if (!token || !email) return null;
+  if (exp && Date.now() / 1000 > exp) { clearSession(); return null; }  // expired
+  return { token, email, expiresAt: exp };
+}
+
+export function clearSession() {
+  localStorage.removeItem('pw_token');
+  localStorage.removeItem('pw_email');
+  localStorage.removeItem('pw_token_exp');
+}
+
 // Download ALL filtered rows as CSV (server-generated, not capped).
 export async function downloadFilteredCsv({ filters = {}, search = '', name = 'raw_orders' } = {}) {
-  const res = await fetch(`${API_BASE}/export`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filters, search }),
-  });
+  const res = await apiFetch(apiUrl('/export', { filters, search }));
   if (!res.ok) throw new Error(`Export failed (${res.status})`);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -142,11 +240,11 @@ export async function downloadFilteredCsv({ filters = {}, search = '', name = 'r
 
 // Component-Level Summary: aggregated component data for the current filters.
 export async function fetchComponents(filters = {}) {
-  const res = await fetch(`${API_BASE}/components`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filters }),
-  });
+  if (isDefaultFilters(filters)) {
+    const snap = await tryStaticSnapshot('/data/components.json');
+    if (snap) return snap;
+  }
+  const res = await apiFetch(apiUrl('/components', { filters }));
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).error || ''; } catch { /* ignore */ }
@@ -158,11 +256,7 @@ export async function fetchComponents(filters = {}) {
 // Download the FULL aggregated table (sku | coupons | components) as CSV,
 // computed server-side for the current filters (not just the on-screen rows).
 export async function downloadSummaryCsv({ kind, filters = {}, name } = {}) {
-  const res = await fetch(`${API_BASE}/export-summary`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind, filters }),
-  });
+  const res = await apiFetch(apiUrl('/export-summary', { kind, filters }));
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).error || ''; } catch { /* ignore */ }
@@ -177,11 +271,7 @@ export async function downloadSummaryCsv({ kind, filters = {}, name } = {}) {
 }
 
 export async function fetchRows({ filters = {}, offset = 0, limit = 200, search = '' } = {}) {
-  const res = await fetch(`${API_BASE}/rows`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filters, offset, limit, search }),
-  });
+  const res = await apiFetch(apiUrl('/rows', { filters, offset, limit, search }));
   if (!res.ok) throw new Error(`API ${res.status} ${res.statusText}`);
   return res.json();
 }

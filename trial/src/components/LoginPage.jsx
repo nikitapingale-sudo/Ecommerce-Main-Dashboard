@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2, ShoppingCart, TrendingUp, Package, KeyRound } from 'lucide-react';
-import { authCheck, authRegister, authLogin, authForgot, authReset } from '../utils/dataEngine';
+import { authRegister, authLogin, authForgot, authReset, saveSession } from '../utils/dataEngine';
+
+const MIN_PW = 8;  // keep in sync with MIN_PW_LEN in scripts/api.py
 
 export default function LoginPage({ onAuth }) {
-  const [step, setStep] = useState('email');   // 'email' | 'password' | 'reset'
+  const [step, setStep] = useState('form');     // 'form' | 'reset'
   const [mode, setMode] = useState('login');    // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -12,13 +14,19 @@ export default function LoginPage({ onAuth }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  // On success the backend returns { token, email, expiresAt } — persist it and
+  // hand control back to <Root>, which re-reads the session and mounts the app.
+  const finish = (res) => { saveSession(res); onAuth(); };
+
   const requestReset = async () => {
+    const em = email.trim().toLowerCase();
+    if (!em || !em.includes('@')) { setError('Enter your email above first.'); return; }
     setBusy(true); setError(''); setNote('');
     try {
-      const res = await authForgot(email.trim().toLowerCase());
+      const res = await authForgot(em);
       setNote(res.emailed
-        ? `We've emailed a 6-digit reset code to ${email}. Enter it below.`
-        : (res.note || 'A reset code was generated — ask your admin for it.'));
+        ? `If ${em} has an account, we've emailed a 6-digit reset code. Enter it below.`
+        : (res.note || 'If that email has an account, a reset code has been sent.'));
       setStep('reset');
     } catch (err) { setError(err.message || 'Could not start reset.'); }
     finally { setBusy(false); }
@@ -27,41 +35,26 @@ export default function LoginPage({ onAuth }) {
   const submitReset = async (e) => {
     e.preventDefault();
     if (!code.trim()) { setError('Enter the reset code.'); return; }
-    if (password.length < 4) { setError('New password must be at least 4 characters.'); return; }
+    if (password.length < MIN_PW) { setError(`New password must be at least ${MIN_PW} characters.`); return; }
     setBusy(true); setError('');
     try {
       const res = await authReset(email.trim().toLowerCase(), code.trim(), password);
-      localStorage.setItem('pw_token', res.token);
-      localStorage.setItem('pw_email', res.email);
-      onAuth(res.email);
+      finish(res);
     } catch (err) { setError(err.message || 'Reset failed.'); }
     finally { setBusy(false); }
   };
 
-  const submitEmail = async (e) => {
+  const submitCreds = async (e) => {
     e.preventDefault();
     const em = email.trim().toLowerCase();
     if (!em || !em.includes('@')) { setError('Enter a valid email address.'); return; }
-    setBusy(true); setError('');
-    try {
-      const { exists } = await authCheck(em);
-      setMode(exists ? 'login' : 'signup');
-      setStep('password');
-    } catch (err) { setError(err.message || 'Could not reach the server.'); }
-    finally { setBusy(false); }
-  };
-
-  const submitPassword = async (e) => {
-    e.preventDefault();
-    if (password.length < 4) { setError('Password must be at least 4 characters.'); return; }
+    if (password.length < MIN_PW) { setError(`Password must be at least ${MIN_PW} characters.`); return; }
     setBusy(true); setError('');
     try {
       const fn = mode === 'signup' ? authRegister : authLogin;
-      const res = await fn(email.trim().toLowerCase(), password);
-      localStorage.setItem('pw_token', res.token);
-      localStorage.setItem('pw_email', res.email);
-      onAuth(res.email);
-    } catch (err) { setError(err.message || 'Login failed.'); }
+      const res = await fn(em, password);
+      finish(res);
+    } catch (err) { setError(err.message || (mode === 'signup' ? 'Sign up failed.' : 'Login failed.')); }
     finally { setBusy(false); }
   };
 
@@ -70,6 +63,8 @@ export default function LoginPage({ onAuth }) {
     background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, outline: 'none',
   };
   const iconWrap = { position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' };
+
+  const switchMode = (m) => { setMode(m); setError(''); };
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', fontFamily: 'var(--font)' }}>
@@ -111,27 +106,17 @@ export default function LoginPage({ onAuth }) {
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
         <div style={{ width: '100%', maxWidth: 380 }}>
           <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)' }}>
-            {step === 'email' ? 'Welcome 👋' : step === 'reset' ? 'Reset your password' : mode === 'signup' ? 'Create your password' : 'Welcome back'}
+            {step === 'reset' ? 'Reset your password' : mode === 'signup' ? 'Create your account' : 'Welcome back'}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 6, marginBottom: 26 }}>
-            {step === 'email'
-              ? 'Sign in with your work email. New here? You can set a password in the next step.'
-              : step === 'reset'
-                ? (note || <>Enter the reset code sent to <b style={{ color: 'var(--text2)' }}>{email}</b> and choose a new password.</>)
-                : mode === 'signup'
-                  ? <>First time for <b style={{ color: 'var(--text2)' }}>{email}</b> — choose a password to create your account.</>
-                  : <>Enter the password for <b style={{ color: 'var(--text2)' }}>{email}</b>.</>}
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 6, marginBottom: 22 }}>
+            {step === 'reset'
+              ? (note || <>Enter the reset code sent to <b style={{ color: 'var(--text2)' }}>{email}</b> and choose a new password.</>)
+              : mode === 'signup'
+                ? 'Sign up with your work email and a strong password.'
+                : 'Sign in with your work email.'}
           </div>
 
-          {step === 'email' ? (
-            <form onSubmit={submitEmail}>
-              <div style={{ position: 'relative', marginBottom: 14 }}>
-                <span style={iconWrap}><Mail size={16}/></span>
-                <input autoFocus type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" style={field}/>
-              </div>
-              <Submit busy={busy} label="Continue"/>
-            </form>
-          ) : step === 'reset' ? (
+          {step === 'reset' ? (
             <form onSubmit={submitReset}>
               <div style={{ position: 'relative', marginBottom: 14 }}>
                 <span style={iconWrap}><KeyRound size={16}/></span>
@@ -139,39 +124,48 @@ export default function LoginPage({ onAuth }) {
               </div>
               <div style={{ position: 'relative', marginBottom: 14 }}>
                 <span style={iconWrap}><Lock size={16}/></span>
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="New password (min 4 chars)" style={field}/>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={`New password (min ${MIN_PW} chars)`} style={field}/>
               </div>
               <Submit busy={busy} label="Reset & sign in"/>
               <div style={{ display:'flex', justifyContent:'space-between', marginTop:12 }}>
-                <button type="button" onClick={requestReset} style={{ background:'transparent', color:'var(--accent)', fontSize:12.5, fontWeight:600 }}>Resend code</button>
-                <button type="button" onClick={() => { setStep('password'); setCode(''); setPassword(''); setError(''); setNote(''); }} style={{ background:'transparent', color:'var(--text3)', fontSize:12.5 }}>← Back</button>
+                <button type="button" onClick={requestReset} disabled={busy} style={{ background:'transparent', color:'var(--accent)', fontSize:12.5, fontWeight:600 }}>Resend code</button>
+                <button type="button" onClick={() => { setStep('form'); setCode(''); setPassword(''); setError(''); setNote(''); }} style={{ background:'transparent', color:'var(--text3)', fontSize:12.5 }}>← Back</button>
               </div>
             </form>
           ) : (
-            <form onSubmit={submitPassword}>
-              <div style={{ position: 'relative', marginBottom: 14 }}>
-                <span style={iconWrap}><Mail size={16}/></span>
-                <input value={email} disabled style={{ ...field, opacity: .65 }}/>
+            <>
+              {/* Sign in / Create account tabs — the client chooses; the server
+                  never discloses whether an account exists (report F-22). */}
+              <div style={{ display:'flex', gap:4, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:4, marginBottom:18 }}>
+                {[['login','Sign in'], ['signup','Create account']].map(([m, lbl]) => (
+                  <button key={m} type="button" onClick={() => switchMode(m)} style={{
+                    flex:1, padding:'8px 10px', borderRadius:7, fontSize:13, fontWeight:700, cursor:'pointer', border:'none',
+                    background: mode===m ? 'var(--surface)' : 'transparent',
+                    boxShadow: mode===m ? 'var(--shadow)' : 'none',
+                    color: mode===m ? 'var(--text)' : 'var(--text3)' }}>{lbl}</button>
+                ))}
               </div>
-              <div style={{ position: 'relative', marginBottom: 14 }}>
-                <span style={iconWrap}><Lock size={16}/></span>
-                <input autoFocus type="password" value={password} onChange={e => setPassword(e.target.value)}
-                       placeholder={mode === 'signup' ? 'Set a password (min 4 chars)' : 'Your password'} style={field}/>
-              </div>
-              <Submit busy={busy} label={mode === 'signup' ? 'Create account & sign in' : 'Sign in'}/>
-              <div style={{ display:'flex', justifyContent:'space-between', marginTop: 12 }}>
-                <button type="button" onClick={() => { setStep('email'); setPassword(''); setError(''); }}
-                        style={{ background: 'transparent', color: 'var(--text3)', fontSize: 12.5 }}>
-                  ← Different email
-                </button>
+              <form onSubmit={submitCreds}>
+                <div style={{ position: 'relative', marginBottom: 14 }}>
+                  <span style={iconWrap}><Mail size={16}/></span>
+                  <input autoFocus type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" style={field}/>
+                </div>
+                <div style={{ position: 'relative', marginBottom: 14 }}>
+                  <span style={iconWrap}><Lock size={16}/></span>
+                  <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                         placeholder={mode === 'signup' ? `Set a password (min ${MIN_PW} chars)` : 'Your password'} style={field}/>
+                </div>
+                <Submit busy={busy} label={mode === 'signup' ? 'Create account & sign in' : 'Sign in'}/>
                 {mode === 'login' && (
-                  <button type="button" onClick={requestReset} disabled={busy}
-                          style={{ background: 'transparent', color: 'var(--accent)', fontSize: 12.5, fontWeight: 600 }}>
-                    Forgot password?
-                  </button>
+                  <div style={{ display:'flex', justifyContent:'flex-end', marginTop: 12 }}>
+                    <button type="button" onClick={requestReset} disabled={busy}
+                            style={{ background: 'transparent', color: 'var(--accent)', fontSize: 12.5, fontWeight: 600 }}>
+                      Forgot password?
+                    </button>
+                  </div>
                 )}
-              </div>
-            </form>
+              </form>
+            </>
           )}
 
           {error && <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--red)', background: 'var(--red-bg)', padding: '9px 12px', borderRadius: 9 }}>{error}</div>}

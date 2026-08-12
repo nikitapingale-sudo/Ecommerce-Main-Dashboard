@@ -2,7 +2,9 @@
 # large local artifacts out of the deployment upload.
 scripts/
 logs/
-data/
+# Anchored to the project root so it excludes ./data (local raw artifacts) but
+# NOT public/data (static JSON snapshots that must ship to the CDN).
+/data/
 *.zip
 *.log
 __pycache__/
