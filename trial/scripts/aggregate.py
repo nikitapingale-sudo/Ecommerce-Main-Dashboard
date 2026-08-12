@@ -48,7 +48,9 @@ PENDENCY_TABLE_COLS = [
 #    · it has a cancelled_date         (has_cancelled_date == 1)
 #    · its item status group is one of NET_REV_EXCLUDED_GROUPS
 #  The groups below cover, across all three status vocabularies:
-#    Cancelled     <- 'Cancelled', 'Closed', 'cancelled' (3P)
+#    Cancelled     <- 'Cancelled', 'Cancellation_Requested', 'cancelled' (3P)
+#                     ('Closed' is NOT a cancellation — it is its own group and
+#                      its revenue counts towards Final Revenue)
 #    Return/Refund <- 'Refunded', 'Returned' (= raw 'Shipped & Returned'),
 #                     'returned' (3P), 'returned_failed' (3P)
 #  RTO/Lost ('Return/RTO', 'lost') is deliberately NOT excluded — that revenue

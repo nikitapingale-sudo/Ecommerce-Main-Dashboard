@@ -388,6 +388,8 @@ export const STATUS_COLOR = {
 export const ITEM_STATUS_COLOR = {
   Delivered: '#00c48c', Shipped: '#3d9cf0', Packed: '#a855f7',
   Allocated: '#00d4d4', Confirmed: '#8b85ff', Pending: '#ffc542',
-  'Return/Refund': '#ff8c42', 'RTO/Lost': '#ff6b9d', Cancelled: '#ff4d6d', Others: '#5a6080',
+  'Return/Refund': '#ff8c42', 'RTO/Lost': '#ff6b9d', Cancelled: '#ff4d6d',
+  Closed: '#94a3b8',   // own lifecycle state — not a cancellation
+  Others: '#5a6080',
 };
 export const COLORS = ['#4f46e5','#059669','#2563eb','#d97706','#dc2626','#ea580c','#7c3aed','#0891b2','#db2777','#65a30d','#f43f5e','#0e7490'];
