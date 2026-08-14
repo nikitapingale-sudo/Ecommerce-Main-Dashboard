@@ -78,6 +78,13 @@ function StatCard({ label, value, accent, sub, title, emphasis }) {
   );
 }
 
+// Week-on-week delta shown under the headline cards. The sparkline KPIs that
+// used to carry this signal were removed as duplicates, so surface it here.
+function wowSub(v) {
+  if (v === undefined || v === null || Number.isNaN(v)) return null;
+  return `${v >= 0 ? '▲' : '▼'} ${Math.abs(v).toFixed(0)}% WoW`;
+}
+
 function KpiSection({ title, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -201,20 +208,9 @@ export default function OverviewPage({ data, filters, goto }) {
   const byStatus= useMemo(() => groupArr(data, 'order_status_group'), [data]);
   const byChan  = useMemo(() => groupArr(data, 'vco_channel_name'), [data]);
   const byPay   = useMemo(() => groupArr(data, 'payment_sources'), [data]);
-  const byOStat = useMemo(() => groupArr(data, 'final_order_status'), [data]);
   // Segment breakdown (orders/lines/qty/revenue per 1P/3P/B2B) — for the funnels.
   const bySeg = useMemo(() => ((data.by && data.by.purchaseLevel) || []).filter(r => ['1P', '3P', 'B2B'].includes(r.name)), [data]);
   const segRows = (measure) => bySeg.map(r => ({ name: r.name, value: r[measure] || 0, color: SEG_COLORS[r.name] }));
-
-  // Daily series (last 30 pts) for the KPI sparklines.
-  const spark = useMemo(() => {
-    const d = groupByDate(data, 'day').slice(-30);
-    return {
-      orders:  d.map(r => r.orders  || 0),
-      revenue: d.map(r => r.revenue || 0),
-      qty:     d.map(r => r.qty     || 0),
-    };
-  }, [data]);
 
   // Week-over-week % (last 7 days vs the prior 7) — robust to partial months.
   const wow = useMemo(() => {
@@ -256,8 +252,8 @@ export default function OverviewPage({ data, filters, goto }) {
       {/* ── Overall KPI Section — headline cards + funnel breakdowns (revenue in Cr) ── */}
       <KpiSection title="Overall KPI Section">
         <div style={KROW}>
-          <StatCard label="Total Orders"  value={kmt(m.orders)}       accent="#4f46e5"/>
-          <StatCard label="Total Revenue" value={fmtCr(m.rev)}        accent="#16a34a"/>
+          <StatCard label="Total Orders"  value={kmt(m.orders)}       accent="#4f46e5" sub={wowSub(wow.orders)}/>
+          <StatCard label="Total Revenue" value={fmtCr(m.rev)}        accent="#16a34a" sub={wowSub(wow.revenue)}/>
           {/* Net realisable revenue — already excludes cancelled + refunded /
               returned lines, so no status filtering is needed by hand.
               Return/RTO is intentionally still counted. */}
@@ -271,10 +267,11 @@ export default function OverviewPage({ data, filters, goto }) {
                          + "  • is Refunded or Returned (incl. Shipped & Returned,\n"
                          + "    3P 'returned', 'returned_failed')\n\n"
                          + "Return/RTO and Lost are NOT excluded — that revenue still counts."}/>
-          <StatCard label="Order Amount"  value={fmtCr(m.orderAmount)}/>
+          {/* "Order Amount" removed — it is the same sum as Total Revenue
+              (both are SUM(vc_order_item_amount)), so it only duplicated it. */}
           <StatCard label="Cancelled Amount" value={fmtCr(m.cancelledAmount)} accent="#e11d48"/>
           <StatCard label="Refund Amount"    value={fmtCr(m.refundAmount)}    accent="#ea580c"/>
-          <StatCard label="Total Qty"     value={kmt(m.qty)}          accent="#2563eb"/>
+          <StatCard label="Total Qty"     value={kmt(m.qty)}          accent="#2563eb" sub={wowSub(wow.qty)}/>
         </div>
         <div style={FROW}>
           <FunnelChart title="🗂️ Orders by Segment"      format={kmt}   rows={segRows('orders')}/>
@@ -289,39 +286,31 @@ export default function OverviewPage({ data, filters, goto }) {
         </div>
       </KpiSection>
 
-      {/* ── Order economics + fulfilment rate cards ── */}
+      {/* ── Order economics. Total Qty lives in the headline row above;
+             Fulfillment % / Cancelled Order % / Return-RTO % are the same
+             numbers as the Delivery Rate / Cancelled / RTO KPI cards below. ── */}
       <KpiSection>
         <div style={KROW}>
           <StatCard label="Total Line Item" value={kmt(m.lines)}/>
-          <StatCard label="Total Qty"       value={kmt(m.qty)}/>
           <StatCard label="ASP"             value={fmtCr(m.asp)}/>
           <StatCard label="AOV"             value={fmtCr(m.aov)}/>
-        </div>
-        <div style={KROW}>
-          <StatCard label="Fulfillment %"     value={pct(m.delivRate)}  accent="#16a34a"/>
-          <StatCard label="COD %"             value={pct(m.codPct)}/>
-          <StatCard label="Cancelled Order %" value={pct(m.cancelRate)} accent="#e11d48"/>
-          <StatCard label="Return/RTO %"      value={pct(m.rtoRate)}    accent="#db2777"/>
+          <StatCard label="COD %"           value={pct(m.codPct)}/>
         </div>
       </KpiSection>
 
-      {/* ── Key KPIs (click any card to drill through) ── */}
-      <KPIGrid cols={5}>
-        <KPI icon="🗂️" label="Total Orders"     value={m.orders.toLocaleString()} sub={`${m.lines.toLocaleString()} lines`}          color="#4f46e5" trend={wow.orders}  spark={spark.orders}  onClick={()=>setDrill({ label:'Total Orders', field:'orders', icon:'🗂️' })}/>
-        <KPI icon="💰" label="Gross Revenue"    value={fmtCr(m.rev)}              sub={`AOV ${fmt(m.aov)}`}                          color="#16a34a" trend={wow.revenue} spark={spark.revenue} onClick={()=>setDrill({ label:'Gross Revenue', field:'revenue', icon:'💰' })}/>
-        <KPI icon="📦" label="Units Sold"       value={m.qty.toLocaleString()}    sub={`${m.aul.toFixed(1)} / order`}               color="#2563eb" trend={wow.qty}     spark={spark.qty}     onClick={()=>setDrill({ label:'Units Sold', field:'qty', icon:'📦' })}/>
-        <KPI icon="🚚" label="Shipping Charges" value={fmtCr(m.delCharges)}       sub="Collected"                                    color="#7c3aed" onClick={()=>setDrill({ label:'Shipping Charges', field:'revenue', icon:'🚚' })}/>
+      {/* ── Status & fulfilment KPIs (click any card to drill through).
+             Total Orders / Gross Revenue / Units Sold were dropped from here —
+             they repeat the headline row above. ── */}
+      <KPIGrid cols={3}>
         <KPI icon="✅" label="Delivery Rate"    value={pct(m.delivRate)}
              sub={`${m.delivered.toLocaleString()} delivered`}
              color={m.delivRate >= 60 ? '#16a34a' : m.delivRate >= 45 ? '#d97706' : '#e11d48'}
              onClick={()=>setDrill({ label:'Delivered', field:'orders', icon:'✅' })}/>
-      </KPIGrid>
-      {/* ── Status KPIs — percentage on top, count below ── */}
-      <KPIGrid cols={4}>
         <KPI icon="❌" label="Cancelled"     value={pct(m.cancelRate)}     sub={`${m.cancelled.toLocaleString()} orders`}  color={m.cancelRate > 15 ? '#e11d48' : '#ea580c'} onClick={()=>setDrill({ label:'Cancelled', field:'orders', icon:'❌' })}/>
         <KPI icon="🔁" label="RTO / Returns" value={pct(m.rtoRate)}        sub={`${m.rto.toLocaleString()} orders`}        color={m.rtoRate > 8 ? '#e11d48' : '#db2777'}     onClick={()=>setDrill({ label:'RTO / Returns', field:'orders', icon:'🔁' })}/>
         <KPI icon="🚚" label="In Transit"    value={pct(share(m.inTransit))} sub={`${m.inTransit.toLocaleString()} orders`} color="#2563eb" onClick={()=>setDrill({ label:'In Transit', field:'orders', icon:'🚚' })}/>
         <KPI icon="📥" label="Received"      value={pct(share(m.received))}  sub={`${m.received.toLocaleString()} orders`}  color="#d97706" onClick={()=>setDrill({ label:'Received', field:'orders', icon:'📥' })}/>
+        <KPI icon="🚚" label="Shipping Charges" value={fmtCr(m.delCharges)}  sub="Collected"                                color="#7c3aed" onClick={()=>setDrill({ label:'Shipping Charges', field:'revenue', icon:'🚚' })}/>
       </KPIGrid>
 
       {/* ── Top Movers (last 30d vs prior 30d) ── */}
@@ -372,8 +361,10 @@ export default function OverviewPage({ data, filters, goto }) {
         </Card>
       </div>
 
-      {/* ── Monthly Revenue + Order Status Detail (count + share) ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+      {/* ── Monthly Revenue (the Order Status Detail list that sat beside it was
+             removed — the Status Funnel above already breaks orders down by
+             status, and it is clickable). ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:16 }}>
         <Card title="📅 Monthly Revenue" height={220}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={groupByDate(data,'month')} margin={{ top:4, right:8, bottom:0, left:8 }} barCategoryGap="12%">
@@ -384,11 +375,6 @@ export default function OverviewPage({ data, filters, goto }) {
               <Bar dataKey="revenue" name="Revenue" fill="#4f46e5" radius={[4,4,0,0]} maxBarSize={64}/>
             </BarChart>
           </ResponsiveContainer>
-        </Card>
-        <Card title="🏷️ Order Status Detail" subtitle="Orders & share of total" height="auto">
-          <StatList
-            items={byOStat.slice(0, 10).map(s => ({ name: s.name, value: s.orders, color: STATUS_COLOR[s.name] }))}
-            colors={COLORS}/>
         </Card>
       </div>
 
