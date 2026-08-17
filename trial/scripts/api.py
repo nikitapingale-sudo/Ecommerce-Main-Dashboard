@@ -570,12 +570,26 @@ def component_summary(filters, limit=2000):
         a["asp"] = round(a["sales_component"] / a["qty_component"], 2) if a["qty_component"] else 0.0
         a["saleSharePct"] = round(a["sales_component"] / total_sales * 100, 2)
     rows.sort(key=lambda r: -r["sales_component"])
+
+    # Totals across ALL components, computed BEFORE the display cap. The page
+    # shows the top `limit` rows; summing only those understated component sales
+    # by the whole tail (1,040 components / ~Rs 0.45 Cr at the time of writing),
+    # so the page total no longer matched SKU-level revenue.
+    totals = {
+        "components": len(rows),
+        "qty": round(sum(r["qty_component"] for r in rows), 2),
+        "sales": round(sum(r["sales_component"] for r in rows), 2),
+        "shown": min(len(rows), limit) if limit else len(rows),
+    }
+    totals["asp"] = round(totals["sales"] / totals["qty"], 2) if totals["qty"] else 0.0
+
     if limit:
         rows = rows[:limit]
 
+    out = {"rows": rows, "totals": totals}
     with _cache_lock:
-        _component_cache[key] = (_now() + API_CACHE_TTL, rows)
-    return rows
+        _component_cache[key] = (_now() + API_CACHE_TTL, out)
+    return out
 
 
 def _rows_to_csv(rows):
@@ -605,7 +619,7 @@ def summary_export_rows(kind, filters):
     if kind == "coupons":
         return ds.coupon_analysis(df, top=10_000_000).get("coupons", [])
     if kind == "components":
-        return component_summary(filters, limit=None)
+        return component_summary(filters, limit=None)["rows"]
     raise ValueError(f"unknown export kind: {kind}")
 
 
@@ -1322,10 +1336,15 @@ class Handler(BaseHTTPRequestHandler):
     def _respond_components(self, filters):
         try:
             t0 = _now()
-            rows = component_summary(filters)
-            body = json.dumps({"components": rows, "meta": {"count": len(rows)}},
+            res = component_summary(filters)
+            rows, totals = res["rows"], res["totals"]
+            # `totals` covers EVERY component; `rows` is only the top slice the
+            # table renders. The page must headline the former.
+            body = json.dumps({"components": rows,
+                               "totals": totals,
+                               "meta": {"count": len(rows), "total": totals["components"]}},
                               ensure_ascii=False, default=str).encode("utf-8")
-            dbm.log(f"components -> {len(rows)} components in {_now()-t0:.2f}s")
+            dbm.log(f"components -> {len(rows)}/{totals['components']} components in {_now()-t0:.2f}s")
             self._send_json(200, body)
         except Exception as err:
             dbm.log(f"ERROR /components: {err}")
