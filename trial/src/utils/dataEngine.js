@@ -140,6 +140,7 @@ export const EMPTY_METRICS = {
 };
 export const EMPTY_BUNDLE = {
   meta: { filteredRows: 0, totalRows: 0, minDate: '', maxDate: '' },
+  options: {},
   metrics: EMPTY_METRICS,
   by: {},
   date: { day: [], week: [], month: [] },
@@ -368,6 +369,18 @@ export const FILTER_OPTIONS = {
 const names = (arr) => (arr || []).map(x => x.name).filter(n => n && n !== 'Unknown').sort();
 
 export function buildFilterOptions(bundle) {
+  // Prefer the server's full value lists (bundle.options). They come from the
+  // WHOLE dataset, so a value that is filtered out — e.g. the statuses hidden
+  // by default — is still offered and can be switched back on. Falling back to
+  // the `by.*` breakdowns would only ever list values present in the CURRENT
+  // filtered view, which silently makes those choices unreachable.
+  const opts = bundle && bundle.options;
+  if (opts && Object.keys(opts).length) {
+    Object.keys(FILTER_OPTIONS).forEach(k => {
+      if (Array.isArray(opts[k])) FILTER_OPTIONS[k] = opts[k];
+    });
+    return FILTER_OPTIONS;
+  }
   const by = (bundle && bundle.by) || {};
   Object.assign(FILTER_OPTIONS, {
     channels:       names(by.channel),
