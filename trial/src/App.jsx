@@ -18,10 +18,11 @@ import CouponsPage from './pages/CouponsPage';
 import ComponentSummaryPage from './pages/ComponentSummaryPage';
 import ActionsPage from './pages/ActionsPage';
 import ChatWidget from './components/ChatWidget';
-import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE, DEFAULT_LINE_STATUS_EXCLUDE, sameSet } from './utils/dataEngine';
+import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, sameSet } from './utils/dataEngine';
 
 const DEFAULT_FILTERS = {
-  dateFrom:'', dateTo:'',
+  // Opens on 1 Apr 2026 -> today (open upper bound = latest data).
+  dateFrom:DEFAULT_DATE_FROM, dateTo:DEFAULT_DATE_TO,
   deliveryDateFrom:'', deliveryDateTo:'',
   refundedDateFrom:'', refundedDateTo:'',
   channels:[], warehouses:[], states:[], payments:[],
@@ -129,7 +130,9 @@ export default function App({ userEmail, onLogout }) {
   const TOTAL = totalOrders;
   const activeFilters = (() => {
     const dateKeys = new Set(['dateFrom', 'dateTo', 'deliveryDateFrom', 'deliveryDateTo', 'refundedDateFrom', 'refundedDateTo']);
-    let n = (filters.dateFrom || filters.dateTo) ? 1 : 0;
+    const defaultWindow = (filters.dateFrom || '') === DEFAULT_DATE_FROM
+                       && (filters.dateTo || '') === DEFAULT_DATE_TO;
+    let n = (!defaultWindow && (filters.dateFrom || filters.dateTo)) ? 1 : 0;
     if (filters.deliveryDateFrom || filters.deliveryDateTo) n++;
     if (filters.refundedDateFrom || filters.refundedDateTo) n++;
     Object.entries(filters).forEach(([k, v]) => {
