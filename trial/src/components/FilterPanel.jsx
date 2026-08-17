@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, Check, ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react';
-import { FILTER_OPTIONS, DEFAULT_LINE_STATUS_EXCLUDE, sameSet } from '../utils/dataEngine';
+import { FILTER_OPTIONS, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, sameSet } from '../utils/dataEngine';
 
 // Filter sections. Status Group, OMS, and — per request — Order Status,
 // Finance Category and Order Category are intentionally not offered.
@@ -103,7 +103,9 @@ function FilterSection({ icon, label, options, selected, onChange, invert }) {
 
 const DATE_KEYS = ['dateFrom', 'dateTo', 'deliveryDateFrom', 'deliveryDateTo', 'refundedDateFrom', 'refundedDateTo'];
 function counts(f) {
-  let n = (f.dateFrom || f.dateTo) ? 1 : 0;
+  const defaultWindow = (f.dateFrom || '') === DEFAULT_DATE_FROM
+                     && (f.dateTo || '') === DEFAULT_DATE_TO;
+  let n = (!defaultWindow && (f.dateFrom || f.dateTo)) ? 1 : 0;
   if (f.deliveryDateFrom || f.deliveryDateTo) n++;
   if (f.refundedDateFrom || f.refundedDateTo) n++;
   Object.entries(f).forEach(([k, v]) => {
@@ -114,7 +116,8 @@ function counts(f) {
   return n;
 }
 function blank(filters) {
-  const out = { ...filters, dateFrom:'', dateTo:'', deliveryDateFrom:'', deliveryDateTo:'', refundedDateFrom:'', refundedDateTo:'' };
+  const out = { ...filters, dateFrom:DEFAULT_DATE_FROM, dateTo:DEFAULT_DATE_TO,
+                deliveryDateFrom:'', deliveryDateTo:'', refundedDateFrom:'', refundedDateTo:'' };
   Object.keys(out).forEach(k => { if (Array.isArray(out[k])) out[k] = []; });
   // Reset goes back to the DEFAULT view, which still hides cancelled /
   // refunded / returned lines — not to "everything included".

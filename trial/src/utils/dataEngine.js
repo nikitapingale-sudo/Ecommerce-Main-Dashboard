@@ -77,6 +77,15 @@ async function apiFetchRetry(url, init) {
   return res;
 }
 
+// Order-date window the dashboard opens on: 1 Apr 2026 → today.
+// The upper bound is left OPEN rather than stamped with today's date. Stamping
+// it would change the default every midnight, so the static CDN snapshot (which
+// is generated for the default filters) would stop matching and every page load
+// would fall through to the live API. Open-ended means "up to the latest data",
+// which is today, and stays correct as new orders land.
+export const DEFAULT_DATE_FROM = '2026-04-01';
+export const DEFAULT_DATE_TO = '';
+
 // Line/Item statuses hidden by default. The dashboard opens on realised
 // business only — cancelled, refunded and returned lines are excluded until the
 // user ticks them back on in the Line/Item Status filter.
@@ -105,6 +114,8 @@ function isDefaultFilters(filters) {
   if (!filters) return true;
   return Object.entries(filters).every(([k, v]) => {
     if (k === 'lineStatusesExclude') return sameSet(v, DEFAULT_LINE_STATUS_EXCLUDE);
+    if (k === 'dateFrom') return (v || '') === DEFAULT_DATE_FROM;
+    if (k === 'dateTo') return (v || '') === DEFAULT_DATE_TO;
     return v == null || v === '' || (Array.isArray(v) && v.length === 0);
   });
 }
