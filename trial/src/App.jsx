@@ -18,7 +18,7 @@ import CouponsPage from './pages/CouponsPage';
 import ComponentSummaryPage from './pages/ComponentSummaryPage';
 import ActionsPage from './pages/ActionsPage';
 import ChatWidget from './components/ChatWidget';
-import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE } from './utils/dataEngine';
+import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE, DEFAULT_LINE_STATUS_EXCLUDE, sameSet } from './utils/dataEngine';
 
 const DEFAULT_FILTERS = {
   dateFrom:'', dateTo:'',
@@ -28,6 +28,9 @@ const DEFAULT_FILTERS = {
   oms:[], orderTypes:[], purchaseLevels:[], categories:[],
   statuses:[], finCats:[], orderCats:[], couriers:[], coupons:[],
   orderStatuses:[], lineStatuses:[],
+  // Cancelled / refunded / returned lines are hidden by default; tick them back
+  // on in the Line/Item Status filter. See DEFAULT_LINE_STATUS_EXCLUDE.
+  lineStatusesExclude:[...DEFAULT_LINE_STATUS_EXCLUDE],
 };
 
 const PAGE_LABELS = {
@@ -129,7 +132,13 @@ export default function App({ userEmail, onLogout }) {
     let n = (filters.dateFrom || filters.dateTo) ? 1 : 0;
     if (filters.deliveryDateFrom || filters.deliveryDateTo) n++;
     if (filters.refundedDateFrom || filters.refundedDateTo) n++;
-    Object.entries(filters).forEach(([k, v]) => { if (!dateKeys.has(k) && v?.length) n++; });
+    Object.entries(filters).forEach(([k, v]) => {
+      if (dateKeys.has(k) || !v?.length) return;
+      // The default status exclusion is the baseline view, not a filter the
+      // user applied — only count it once they change it.
+      if (k === 'lineStatusesExclude' && sameSet(v, DEFAULT_LINE_STATUS_EXCLUDE)) return;
+      n++;
+    });
     return n;
   })();
   const updatedAt = lastUpdated

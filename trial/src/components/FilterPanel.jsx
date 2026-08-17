@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, Check, ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react';
-import { FILTER_OPTIONS } from '../utils/dataEngine';
+import { FILTER_OPTIONS, DEFAULT_LINE_STATUS_EXCLUDE, sameSet } from '../utils/dataEngine';
 
 // Filter sections. Status Group, OMS, and — per request — Order Status,
 // Finance Category and Order Category are intentionally not offered.
 // (The backend still supports those keys; they are just not exposed here.)
 const SECTIONS = [
-  { key:'lineStatuses',   label:'Line / Item Status', icon:'📦', opt:'lineStatuses' },
+  // `invert`: the stored array is what to HIDE, so a ticked box means
+  // "included". Cancelled / refunded / returned start unticked.
+  { key:'lineStatusesExclude', label:'Line / Item Status', icon:'📦', opt:'lineStatuses', invert:true },
   { key:'channels',       label:'Channel',           icon:'📡', opt:'channels' },
   { key:'categories',     label:'Category',          icon:'📚', opt:'categories' },
   { key:'payments',       label:'Payment Mode',      icon:'💳', opt:'payments' },
@@ -29,27 +31,44 @@ function Box({ checked }) {
   );
 }
 
-function FilterSection({ icon, label, options, selected, onChange }) {
+function FilterSection({ icon, label, options, selected, onChange, invert }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const filtered = useMemo(
     () => options.filter(o => String(o).toLowerCase().includes(q.toLowerCase())),
     [options, q]);
-  const allSel = filtered.length > 0 && filtered.every(o => selected.includes(o));
-  const toggle = opt => selected.includes(opt) ? onChange(selected.filter(v => v !== opt)) : onChange([...selected, opt]);
-  const toggleAll = () => allSel
-    ? onChange(selected.filter(v => !filtered.includes(v)))
-    : onChange([...new Set([...selected, ...filtered])]);
+  // In invert mode `selected` holds what to HIDE, so a box is ticked when the
+  // option is NOT in the array. Everything else below works off isOn/setOn.
+  const isOn = opt => invert ? !selected.includes(opt) : selected.includes(opt);
+  const allSel = filtered.length > 0 && filtered.every(isOn);
+  const toggle = opt => invert
+    ? onChange(selected.includes(opt) ? selected.filter(v => v !== opt) : [...selected, opt])
+    : (selected.includes(opt) ? onChange(selected.filter(v => v !== opt)) : onChange([...selected, opt]));
+  const toggleAll = () => {
+    if (invert) {
+      // ticked "select all" => hide nothing from the visible list
+      return onChange(allSel ? [...new Set([...selected, ...filtered])] : selected.filter(v => !filtered.includes(v)));
+    }
+    return allSel
+      ? onChange(selected.filter(v => !filtered.includes(v)))
+      : onChange([...new Set([...selected, ...filtered])]);
+  };
+  // Badge: number of applied values. In invert mode count only exclusions that
+  // actually exist in the data — the default list carries a couple of defensive
+  // spellings ('Shipped & Returned') that may not be present, and claiming
+  // "6 hidden" when 4 rows are unticked would just look wrong.
+  const badge = invert ? selected.filter(o => options.includes(o)).length : selected.length;
 
   return (
     <div style={{ borderBottom:'1px solid var(--border)' }}>
       <button onClick={() => setOpen(o => !o)} style={{
         width:'100%', display:'flex', alignItems:'center', gap:8, padding:'10px 14px',
-        background: selected.length ? 'var(--accent-soft)' : 'transparent', color:'var(--text)',
+        background: badge ? 'var(--accent-soft)' : 'transparent', color:'var(--text)',
         fontSize:12.5, fontWeight:600, textAlign:'left' }}>
         <span style={{ fontSize:14 }}>{icon}</span>
         <span style={{ flex:1 }}>{label}</span>
-        {selected.length > 0 && <span style={{ background:'var(--accent)', color:'#fff', borderRadius:20, fontSize:10, fontWeight:700, padding:'1px 7px' }}>{selected.length}</span>}
+        {badge > 0 && <span title={invert ? `${badge} status(es) hidden` : `${badge} selected`}
+          style={{ background: invert ? 'var(--text3)' : 'var(--accent)', color:'#fff', borderRadius:20, fontSize:10, fontWeight:700, padding:'1px 7px' }}>{invert ? `${badge} hidden` : badge}</span>}
         <ChevronDown size={14} style={{ transform: open?'rotate(180deg)':'none', transition:'transform .18s', color:'var(--text3)' }}/>
       </button>
       {open && (
@@ -67,7 +86,7 @@ function FilterSection({ icon, label, options, selected, onChange }) {
             {filtered.length === 0
               ? <div style={{ padding:'10px', fontSize:12, color:'var(--text3)', textAlign:'center' }}>No matches</div>
               : filtered.map(opt => {
-                  const sel = selected.includes(opt);
+                  const sel = isOn(opt);
                   return (
                     <div key={opt} onClick={() => toggle(opt)} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', cursor:'pointer', fontSize:12, color: sel ? 'var(--accent)' : 'var(--text2)' }}>
                       <Box checked={sel}/>
@@ -87,12 +106,19 @@ function counts(f) {
   let n = (f.dateFrom || f.dateTo) ? 1 : 0;
   if (f.deliveryDateFrom || f.deliveryDateTo) n++;
   if (f.refundedDateFrom || f.refundedDateTo) n++;
-  Object.entries(f).forEach(([k, v]) => { if (!DATE_KEYS.includes(k) && v?.length) n++; });
+  Object.entries(f).forEach(([k, v]) => {
+    if (DATE_KEYS.includes(k) || !v?.length) return;
+    if (k === 'lineStatusesExclude' && sameSet(v, DEFAULT_LINE_STATUS_EXCLUDE)) return;
+    n++;
+  });
   return n;
 }
 function blank(filters) {
   const out = { ...filters, dateFrom:'', dateTo:'', deliveryDateFrom:'', deliveryDateTo:'', refundedDateFrom:'', refundedDateTo:'' };
   Object.keys(out).forEach(k => { if (Array.isArray(out[k])) out[k] = []; });
+  // Reset goes back to the DEFAULT view, which still hides cancelled /
+  // refunded / returned lines — not to "everything included".
+  out.lineStatusesExclude = [...DEFAULT_LINE_STATUS_EXCLUDE];
   return out;
 }
 
@@ -177,7 +203,7 @@ export default function FilterPanel({ open, onClose, filters, onChange, onReset,
         </div>
 
         {SECTIONS.map(s => (
-          <FilterSection key={s.key} icon={s.icon} label={s.label}
+          <FilterSection key={s.key} icon={s.icon} label={s.label} invert={s.invert}
             options={FILTER_OPTIONS[s.opt] || []} selected={draft[s.key] || []} onChange={v => setD(s.key, v)}/>
         ))}
       </div>

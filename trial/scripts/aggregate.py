@@ -24,6 +24,14 @@ FILTER_COLS = {
     "orderCats": "order_category", "couriers": "delivery_partner", "coupons": "coupon_code",
     "orderStatuses": "final_order_status", "lineStatuses": "final_item_status",
 }
+# Negative filters: keep everything EXCEPT these values. Used for the
+# Line/Item Status filter, where cancelled/refunded/returned lines are hidden by
+# default. Expressed as an exclusion (not an allow-list) on purpose: a status
+# that appears in the source later stays visible instead of being silently
+# dropped because it was missing from a hardcoded allow-list.
+EXCLUDE_FILTER_COLS = {
+    "lineStatusesExclude": "final_item_status",
+}
 DIM_COLS = {
     "channel": "vco_channel_name", "payment": "payment_sources", "finance": "finance_exam_category",
     "orderCategory": "order_category", "oms": "oms", "purchaseLevel": "purchase_level",
@@ -136,6 +144,10 @@ class Dataset:
             vals = filters.get(fkey)
             if vals and col in df.columns:
                 mask &= df[col].isin(vals).to_numpy()
+        for fkey, col in EXCLUDE_FILTER_COLS.items():
+            vals = filters.get(fkey)
+            if vals and col in df.columns:
+                mask &= ~df[col].isin(vals).to_numpy()
         return df[mask]
 
     # ── metrics ──

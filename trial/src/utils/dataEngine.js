@@ -58,12 +58,36 @@ async function apiFetch(url, init) {
   }
 }
 
-// True when no filter is active (mirrors the app's DEFAULT_FILTERS: all empty).
+// Line/Item statuses hidden by default. The dashboard opens on realised
+// business only — cancelled, refunded and returned lines are excluded until the
+// user ticks them back on in the Line/Item Status filter.
+// Held as an EXCLUDE list rather than an allow-list so a status that shows up in
+// the source later is still counted instead of silently disappearing.
+export const DEFAULT_LINE_STATUS_EXCLUDE = [
+  'Cancelled', 'cancelled',          // Viniculum conditional + 3P
+  'Refunded',
+  'returned', 'Returned',            // 3P + the conditional bucket
+  'Shipped & Returned',              // raw Viniculum spelling
+];
+
+// Order-insensitive set comparison for string arrays.
+export function sameSet(a, b) {
+  const x = a || [], y = b || [];
+  if (x.length !== y.length) return false;
+  const s = new Set(x);
+  return y.every(v => s.has(v));
+}
+
+// True when the filters are the app's defaults, i.e. nothing set except the
+// default status exclusion. Those are exactly the filters the static CDN
+// snapshot is generated with, so this decides whether the snapshot can serve
+// the request.
 function isDefaultFilters(filters) {
   if (!filters) return true;
-  return Object.values(filters).every(
-    v => v == null || v === '' || (Array.isArray(v) && v.length === 0)
-  );
+  return Object.entries(filters).every(([k, v]) => {
+    if (k === 'lineStatusesExclude') return sameSet(v, DEFAULT_LINE_STATUS_EXCLUDE);
+    return v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  });
 }
 
 // Static CDN snapshot of the *unfiltered* view (public/data/*.json). Served as
