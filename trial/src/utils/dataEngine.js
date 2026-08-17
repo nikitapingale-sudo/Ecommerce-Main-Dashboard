@@ -58,6 +58,25 @@ async function apiFetch(url, init) {
   }
 }
 
+// Gateway statuses that mean "the proxy gave up", not "the request was bad".
+const GATEWAY_ERRORS = new Set([502, 503, 504]);
+const RETRY_DELAYS_MS = [4000, 8000, 15000];
+
+// The first request for a given filter recomputes the whole bundle server-side
+// (tens of seconds on ~1M rows), and the Vercel proxy in front of the tunnel
+// times out before that finishes — surfacing as a 502 even though nothing is
+// broken. The backend caches the result BEFORE it writes the response, so the
+// compute completes regardless and a retry is served from cache in ~2s.
+// Retry only on gateway errors; a real 4xx/5xx from the app is returned as-is.
+async function apiFetchRetry(url, init) {
+  let res = await apiFetch(url, init);
+  for (let i = 0; res && GATEWAY_ERRORS.has(res.status) && i < RETRY_DELAYS_MS.length; i++) {
+    await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[i]));
+    res = await apiFetch(url, init);
+  }
+  return res;
+}
+
 // Line/Item statuses hidden by default. The dashboard opens on realised
 // business only — cancelled, refunded and returned lines are excluded until the
 // user ticks them back on in the Line/Item Status filter.
@@ -139,7 +158,7 @@ export async function fetchSummary(filters = {}) {
     const snap = await tryStaticSnapshot('/data/summary.json');
     if (snap) return snap;
   }
-  const res = await apiFetch(apiUrl('/summary', { filters }));
+  const res = await apiFetchRetry(apiUrl('/summary', { filters }));
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).error || ''; } catch { /* ignore */ }
@@ -270,7 +289,7 @@ export async function fetchComponents(filters = {}) {
     const snap = await tryStaticSnapshot('/data/components.json');
     if (snap) return snap;
   }
-  const res = await apiFetch(apiUrl('/components', { filters }));
+  const res = await apiFetchRetry(apiUrl('/components', { filters }));
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).error || ''; } catch { /* ignore */ }
@@ -297,7 +316,7 @@ export async function downloadSummaryCsv({ kind, filters = {}, name } = {}) {
 }
 
 export async function fetchRows({ filters = {}, offset = 0, limit = 200, search = '' } = {}) {
-  const res = await apiFetch(apiUrl('/rows', { filters, offset, limit, search }));
+  const res = await apiFetchRetry(apiUrl('/rows', { filters, offset, limit, search }));
   if (!res.ok) throw new Error(`API ${res.status} ${res.statusText}`);
   return res.json();
 }
