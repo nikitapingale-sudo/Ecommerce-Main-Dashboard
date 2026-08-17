@@ -448,8 +448,10 @@ def get_bundle_map():
             m.setdefault(str(pvid), []).append({
                 "cid": r.get("component_product_variant_id"),
                 "title": r.get("title_component"),
-                "qb": float(r.get("quantity_bundle") or 0),
-                "ratio": float(r.get("mrp_ratio") or 0),
+                # Keep NULLs as None; component_summary coalesces them the way
+                # the component-level query does (quantity 1, ratio 1.0).
+                "qb": float(r["quantity_bundle"]) if r.get("quantity_bundle") is not None else 1.0,
+                "ratio": float(r["mrp_ratio"]) if r.get("mrp_ratio") is not None else None,
                 "sku": r.get("component_sku_code"),
                 "ptype": r.get("component_product_type"),
                 "status": r.get("component_status"),
@@ -473,14 +475,58 @@ _COMP_DIMS = [
 ]
 
 
+# ── Component-level query: per-leg line exclusions ───────────────────────────
+#  The component-level query filters lines in SQL rather than leaving it to the
+#  dashboard, and each leg uses a different rule. Matched on the RAW line status
+#  (`line_status`), lower-cased, which is what that query tests.
+#
+#  NOTE the source query writes 'Shipped & Returned' inside LOWER(...) NOT IN
+#  (...) — that comparison can never be true, so those lines are not actually
+#  excluded there. Listed here in lower case so the exclusion works as intended.
+COMP_B2B_CHANNELS = ("B2B_DC", "B2B_BOS")
+COMP_DROP_B2B = {"cancelled", "closed", "shipped", "returned", "shipped & returned"}
+COMP_DROP_3P = {"cancelled", "returned", "lost"}
+
+
+def _component_base(ds, filters):
+    """Rows feeding the Component-Level Summary, with the component query's own
+    per-leg exclusions applied on top of the dashboard filters:
+
+      B2B_DC / B2B_BOS : drop cancelled / closed / shipped / returned lines
+      PW_Store         : drop lines carrying a refunded or cancelled date
+      3P marketplace   : drop cancelled / returned / lost lines
+    """
+    df = ds._sub(filters)
+    if len(df) == 0 or "line_status" not in df.columns:
+        return df
+    ls = df["line_status"].astype("string").str.lower().fillna("")
+    is_3p = df["oms"].astype("string").eq("3P")
+    ch = df["vco_channel_name"].astype("string")
+    is_b2b = (~is_3p) & ch.isin(COMP_B2B_CHANNELS)
+    is_store = (~is_3p) & ch.eq("PW_Store")
+
+    drop = (is_b2b & ls.isin(COMP_DROP_B2B)) | (is_3p & ls.isin(COMP_DROP_3P))
+    if "has_refunded_date" in df.columns:
+        drop |= is_store & (df["has_refunded_date"] == 1)
+    if "has_cancelled_date" in df.columns:
+        drop |= is_store & (df["has_cancelled_date"] == 1)
+    return df[(~drop).to_numpy()]
+
+
 def component_summary(filters, limit=2000):
-    """Component-Level Summary: split each filtered SKU's qty/revenue across its
-    bundle components (qty*quantity_bundle, revenue*mrp_ratio) and aggregate by
-    component_product_variant_id. Respects all dashboard filters via ds._sub().
+    """Component-Level Summary: split each SKU's qty/revenue across its bundle
+    components (qty*quantity_bundle, revenue*mrp_ratio) and aggregate by
+    component_product_variant_id. Respects the dashboard filters via ds._sub()
+    plus the component query's own per-leg exclusions (see _component_base).
+
+    A SKU with no bundle mapping maps to ITSELF (quantity 1, ratio 1.0) — the
+    component query LEFT JOINs the mapping and coalesces the misses, so those
+    sales must still appear. Dropping them, as an inner join would, silently
+    loses revenue.
 
     Each component also carries its study-material type (from the bundle map)
     and the category hierarchy + channel it sells the most through (from the
-    order rows) — the dimensions the final component-level query groups on."""
+    order rows) — the dimensions the component-level query groups on."""
     key = json.dumps(filters or {}, sort_keys=True)
     with _cache_lock:
         hit = _component_cache.get(key)
@@ -489,23 +535,27 @@ def component_summary(filters, limit=2000):
 
     ds = get_dataset()
     bmap = get_bundle_map()
-    df = ds._sub(filters)
+    df = _component_base(ds, filters)
 
     # Lightweight SKU roll-up (qty + revenue per product_variant_id × the
     # dimensions we carry down) — far cheaper than sku_table(): no extra
     # columns, no JSON round-trip. observed=True keeps only real combinations.
+    # product_name comes along so an unmapped SKU can name itself.
     dim_cols = [c for c, _ in _COMP_DIMS if c in df.columns]
-    g = (df.groupby(["product_variant_id"] + dim_cols, observed=True)
+    key_cols = ["product_variant_id", "product_name"] + dim_cols
+    g = (df.groupby(key_cols, observed=True)
            .agg(qty=("qty", "sum"), revenue=("final_revenue", "sum")))
 
     agg = {}
     for keys, q, rev in zip(g.index.tolist(), g["qty"].tolist(), g["revenue"].tolist()):
         if not isinstance(keys, tuple):
             keys = (keys,)
-        pvid, dim_vals = keys[0], keys[1:]
+        pvid, pname, dim_vals = keys[0], keys[1], keys[2:]
         comps = bmap.get(str(pvid))
         if not comps:
-            continue
+            # No mapping — the SKU is its own component (LEFT JOIN + COALESCE).
+            comps = [{"cid": pvid, "title": pname, "qb": 1.0, "ratio": 1.0,
+                      "sku": None, "ptype": None, "status": None, "mtype": None}]
         q = float(q or 0)
         rev = float(rev or 0)
         for c in comps:
@@ -522,8 +572,11 @@ def component_summary(filters, limit=2000):
                     "qty_component": 0.0, "sales_component": 0.0, "bundles": 0,
                     "_dims": [{} for _ in dim_cols],
                 }
-            share = rev * c["ratio"]
-            a["qty_component"] += q * c["qb"]
+            # COALESCE(mrp_ratio, 1.0) / COALESCE(quantity_bundle, 1)
+            ratio = c["ratio"] if c["ratio"] is not None else 1.0
+            qb = c["qb"] if c["qb"] is not None else 1.0
+            share = rev * ratio
+            a["qty_component"] += q * qb
             a["sales_component"] += share
             a["bundles"] += 1
             for i, v in enumerate(dim_vals):
