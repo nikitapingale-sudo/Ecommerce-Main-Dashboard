@@ -13,6 +13,7 @@ const TT = ({ active, payload, label }) => {
 
 export default function ComponentSummaryPage({ data, filters }) {
   const [rows, setRows] = useState([]);
+  const [srvTotals, setSrvTotals] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const reqId = useRef(0);
@@ -22,15 +23,28 @@ export default function ComponentSummaryPage({ data, filters }) {
     const my = ++reqId.current;
     setLoading(true); setError(null);
     fetchComponents(filters)
-      .then(res => { if (my === reqId.current) { setRows(res.components || []); setLoading(false); } })
+      .then(res => {
+        if (my !== reqId.current) return;
+        setRows(res.components || []);
+        setSrvTotals(res.totals || null);
+        setLoading(false);
+      })
       .catch(err => { if (my === reqId.current) { setError(err.message || String(err)); setLoading(false); } });
   }, [filters]);
 
+  // Headline figures come from the SERVER, computed over every component.
+  // `rows` is only the top slice the table renders, so summing it understated
+  // component sales by the whole tail and no longer tied to SKU-level revenue.
   const totals = useMemo(() => {
+    if (srvTotals) {
+      return { sales: srvTotals.sales, qty: srvTotals.qty,
+               count: srvTotals.components, asp: srvTotals.asp,
+               shown: srvTotals.shown };
+    }
     const sales = rows.reduce((s, r) => s + (r.sales_component || 0), 0);
     const qty = rows.reduce((s, r) => s + (r.qty_component || 0), 0);
-    return { sales, qty, count: rows.length, asp: qty ? sales / qty : 0 };
-  }, [rows]);
+    return { sales, qty, count: rows.length, asp: qty ? sales / qty : 0, shown: rows.length };
+  }, [rows, srvTotals]);
 
   const top = rows.slice(0, 12).map(r => ({ ...r, short: (r.title_component || r.component_sku_code || '').slice(0, 26) }));
 
@@ -54,9 +68,10 @@ export default function ComponentSummaryPage({ data, filters }) {
       ]}/>
 
       <KPIGrid cols={4}>
-        <KPI icon="🧩" label="Components"      value={totals.count.toLocaleString()}            sub="distinct SKUs" color="#7c3aed"/>
+        <KPI icon="🧩" label="Components"      value={totals.count.toLocaleString()}
+             sub={totals.shown < totals.count ? `top ${totals.shown.toLocaleString()} listed below` : 'distinct SKUs'} color="#7c3aed"/>
         <KPI icon="📦" label="Component Units" value={Math.round(totals.qty).toLocaleString()}  sub="qty after bundle split" color="#2563eb"/>
-        <KPI icon="💰" label="Component Sales" value={fmtCr(totals.sales)}                       sub="MRP-weighted split" color="#16a34a"/>
+        <KPI icon="💰" label="Component Sales" value={fmtCr(totals.sales)}                       sub="all components · ties to SKU revenue" color="#16a34a"/>
         <KPI icon="🏷️" label="Blended ASP"     value={fmt(totals.asp)}                           sub="sales ÷ units" color="#d97706"/>
       </KPIGrid>
 
