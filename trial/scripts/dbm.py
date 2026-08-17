@@ -481,7 +481,10 @@ def build_bundle_mapping_query():
         component_product_variant_id,
         title_component,
         quantity_bundle,
-        CASE WHEN bundle_mrp IS NULL OR bundle_mrp = 0 THEN 0.0
+        -- NULL (not 0) when the bundle has no usable MRP: the caller coalesces a
+        -- missing ratio to 1.0, i.e. the component keeps the line's full value.
+        -- Returning 0.0 here would silently zero that revenue instead.
+        CASE WHEN bundle_mrp IS NULL OR bundle_mrp = 0 THEN NULL
              ELSE CAST(component_mrp AS DOUBLE) / bundle_mrp END AS mrp_ratio,
         sku_code             AS component_sku_code,
         product_type         AS component_product_type,
