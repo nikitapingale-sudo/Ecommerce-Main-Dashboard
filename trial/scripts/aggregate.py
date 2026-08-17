@@ -41,6 +41,21 @@ DIM_COLS = {
     "orderStatusRaw": "final_order_status", "lineStatusRaw": "final_item_status",
     "orderClass": "order_class",
 }
+# Values offered by each filter dropdown. Built from the WHOLE dataset, never
+# from the filtered subset: the dashboard hides some statuses by default, and
+# deriving the options from the filtered rows made those values vanish from the
+# dropdown — so they could never be switched back on.
+OPTION_COLS = {
+    "channels": "vco_channel_name", "warehouses": "warehouse", "states": "state",
+    "payments": "payment_sources", "oms": "oms", "orderTypes": "order_type",
+    "purchaseLevels": "purchase_level", "categories": "parent_name",
+    "finCats": "finance_exam_category", "orderCats": "order_category",
+    "couriers": "delivery_partner", "coupons": "coupon_code",
+    "orderStatuses": "final_order_status", "lineStatuses": "final_item_status",
+    "brands": "vco_brand",
+}
+OPTION_CAP = 2000          # keep the payload sane for high-cardinality columns
+
 HIER_LEVELS = ["parent_name", "sub_cat_name", "sub_sub_cat_name", "product_name"]
 PENDING_STATUSES = ("Received", "Packed", "Shipped")
 PENDENCY_TABLE_COLS = [
@@ -116,6 +131,29 @@ class Dataset:
         dates = df["order_date"].dropna()
         self.min_date = str(dates.min()) if len(dates) else ""
         self.max_date = str(dates.max()) if len(dates) else ""
+
+    # ── filter dropdown values (whole dataset, computed once) ──
+    def filter_options(self):
+        """Every selectable value per filter, from the FULL dataset.
+
+        Computed once and cached: the columns are categorical, so the values are
+        already materialised and this is close to free. Deliberately independent
+        of any filter — a value the user has filtered OUT must still be listed,
+        or they cannot undo it.
+        """
+        if getattr(self, "_options", None) is not None:
+            return self._options
+        out = {}
+        for key, col in OPTION_COLS.items():
+            if col not in self.df.columns:
+                out[key] = []
+                continue
+            s = self.df[col]
+            vals = list(s.cat.categories) if hasattr(s, "cat") else s.dropna().unique().tolist()
+            vals = sorted({str(v) for v in vals if str(v) not in ("", "Unknown", "nan", "None")})
+            out[key] = vals[:OPTION_CAP]
+        self._options = out
+        return out
 
     # ── filtering ──
     def _sub(self, filters):
@@ -438,6 +476,8 @@ class Dataset:
         return {
             "meta": {"filteredRows": int(len(df)), "totalRows": self.n,
                      "minDate": self.min_date, "maxDate": self.max_date},
+            # Full value lists for the filter dropdowns — see filter_options().
+            "options": self.filter_options(),
             "metrics": self.metrics(df),
             "by": by,
             "date": {g: self.by_date(df, g) for g in ("day", "week", "month")},

@@ -4,8 +4,8 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/data/live/(.*)", "destination": "https://exactly-salvation-douglas-del.trycloudflare.com/api/$1" },
-    { "source": "/api/(.*)", "destination": "https://exactly-salvation-douglas-del.trycloudflare.com/api/$1" },
+    { "source": "/data/live/(.*)", "destination": "https://exhibitions-minimum-harder-finds.trycloudflare.com/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://exhibitions-minimum-harder-finds.trycloudflare.com/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
