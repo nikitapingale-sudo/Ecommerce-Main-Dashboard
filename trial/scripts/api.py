@@ -475,49 +475,20 @@ _COMP_DIMS = [
 ]
 
 
-# ── Component-level query: per-leg line exclusions ───────────────────────────
-#  The component-level query filters lines in SQL rather than leaving it to the
-#  dashboard, and each leg uses a different rule. Matched on the RAW line status
-#  (`line_status`), lower-cased, which is what that query tests.
-#
-#  NOTE the source query writes 'Shipped & Returned' inside LOWER(...) NOT IN
-#  (...) — that comparison can never be true, so those lines are not actually
-#  excluded there. Listed here in lower case so the exclusion works as intended.
-COMP_B2B_CHANNELS = ("B2B_DC", "B2B_BOS")
-COMP_DROP_B2B = {"cancelled", "closed", "shipped", "returned", "shipped & returned"}
-COMP_DROP_3P = {"cancelled", "returned", "lost"}
-
-
-def _component_base(ds, filters):
-    """Rows feeding the Component-Level Summary, with the component query's own
-    per-leg exclusions applied on top of the dashboard filters:
-
-      B2B_DC / B2B_BOS : drop cancelled / closed / shipped / returned lines
-      PW_Store         : drop lines carrying a refunded or cancelled date
-      3P marketplace   : drop cancelled / returned / lost lines
-    """
-    df = ds._sub(filters)
-    if len(df) == 0 or "line_status" not in df.columns:
-        return df
-    ls = df["line_status"].astype("string").str.lower().fillna("")
-    is_3p = df["oms"].astype("string").eq("3P")
-    ch = df["vco_channel_name"].astype("string")
-    is_b2b = (~is_3p) & ch.isin(COMP_B2B_CHANNELS)
-    is_store = (~is_3p) & ch.eq("PW_Store")
-
-    drop = (is_b2b & ls.isin(COMP_DROP_B2B)) | (is_3p & ls.isin(COMP_DROP_3P))
-    if "has_refunded_date" in df.columns:
-        drop |= is_store & (df["has_refunded_date"] == 1)
-    if "has_cancelled_date" in df.columns:
-        drop |= is_store & (df["has_cancelled_date"] == 1)
-    return df[(~drop).to_numpy()]
+# The component-level query keeps ALL statuses on both legs — it applies no
+# exclusions of its own. So the component page sees exactly the rows the SKU
+# page sees, and the two revenue totals reconcile. Status filtering happens in
+# one place only: the dashboard's Line/Item Status filter, applied to every page
+# alike via ds._sub(). (An earlier revision of that query filtered per leg —
+# B2B shipped/closed, PW_Store refunded/cancelled dates, 3P lost — which broke
+# the reconciliation by ~2.8%.)
 
 
 def component_summary(filters, limit=2000):
     """Component-Level Summary: split each SKU's qty/revenue across its bundle
     components (qty*quantity_bundle, revenue*mrp_ratio) and aggregate by
     component_product_variant_id. Respects the dashboard filters via ds._sub()
-    plus the component query's own per-leg exclusions (see _component_base).
+    and nothing else, so the component total ties back to SKU-level revenue.
 
     A SKU with no bundle mapping maps to ITSELF (quantity 1, ratio 1.0) — the
     component query LEFT JOINs the mapping and coalesces the misses, so those
@@ -527,7 +498,11 @@ def component_summary(filters, limit=2000):
     Each component also carries its study-material type (from the bundle map)
     and the category hierarchy + channel it sells the most through (from the
     order rows) — the dimensions the component-level query groups on."""
-    key = json.dumps(filters or {}, sort_keys=True)
+    # `limit` MUST be part of the key: the page asks for the top 2000 and the
+    # CSV export asks for everything. Keying on filters alone meant an export
+    # taken after a page view was served the capped list from cache — a silently
+    # truncated export that looked complete.
+    key = json.dumps({"f": filters or {}, "limit": limit}, sort_keys=True)
     with _cache_lock:
         hit = _component_cache.get(key)
         if hit and hit[0] > _now():
@@ -535,7 +510,7 @@ def component_summary(filters, limit=2000):
 
     ds = get_dataset()
     bmap = get_bundle_map()
-    df = _component_base(ds, filters)
+    df = ds._sub(filters)
 
     # Lightweight SKU roll-up (qty + revenue per product_variant_id × the
     # dimensions we carry down) — far cheaper than sku_table(): no extra
