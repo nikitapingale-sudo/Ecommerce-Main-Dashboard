@@ -402,6 +402,20 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
       .map(r => ({ ...r, revSharePct: (r.revenue || 0) / tot * 100 }))
       .sort((a, b) => b.revenue - a.revenue);
   }, [data]);
+
+  // Totals row. Revenue and qty are additive and reconcile exactly with the
+  // KPI cards. Orders do NOT: one order can contain lines of several material
+  // types, so summing the column double-counts it (765,579 against 722,688
+  // distinct). The total therefore shows the DISTINCT order count from the
+  // server metrics — the true figure — which is deliberately not the sum of the
+  // column above it. The card title says so.
+  const matTotal = useMemo(() => {
+    if (!matRows.length) return null;
+    const sum = (k) => matRows.reduce((a, r) => a + (r[k] || 0), 0);
+    const qty = sum('qty'), revenue = sum('revenue');
+    return { name: 'Total', orders: m.orders, qty, revenue,
+             revSharePct: 100, asp: qty > 0 ? revenue / qty : 0 };
+  }, [matRows, m]);
   // Segment breakdown (orders/lines/qty/revenue per 1P/3P/B2B) — for the funnels.
   const bySeg = useMemo(() => ((data.by && data.by.purchaseLevel) || []).filter(r => ['1P', '3P', 'B2B'].includes(r.name)), [data]);
   const segRows = (measure) => bySeg.map(r => ({ name: r.name, value: r[measure] || 0, color: SEG_COLORS[r.name] }));
@@ -616,7 +630,7 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
              of what is shown, rather than of a wider set. ── */}
       {matRows.length > 0 && (
         <DataTable
-          title="🧱 Product Material Type — from the live sheet"
+          title="🧱 Product Material Type — from the live sheet · total orders are distinct, not the column sum"
           data={matRows}
           searchable={false}
           columns={[
@@ -627,6 +641,7 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
             { key:'revSharePct', label:'Revenue %',right:true, render:v=>`${(v||0).toFixed(1)}%` },
             { key:'asp',         label:'ASP',      right:true, render:v=>fmt(v) },
           ]}
+          footer={matTotal}
           filename="material_type_summary"
           maxH={420}
         />
