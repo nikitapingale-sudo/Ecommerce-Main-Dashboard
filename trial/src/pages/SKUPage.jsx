@@ -65,22 +65,13 @@ export default function SKUPage({ data, filters }) {
       <DataTable
         title="SKU-Level Performance"
         data={skuData}
-        searchKeys={['sku_code','vco_sku_code','product_name','product_variant_name','parent_name','sub_cat_name','sub_sub_cat_name','vco_brand','source']}
-        searchPlaceholder="Search SKU code, name, brand, category, source…"
+        searchKeys={['sku_code','product_variant_name']}
+        searchPlaceholder="Search SKU code or name…"
         onExport={() => downloadSummaryCsv({ kind:'sku', filters, name:'sku_summary' })}
         exportLabel="Export all SKUs"
         columns={[
           { key:'sku_code', label:'SKU Code', bold:true, w:230 },
           { key:'product_variant_name', label:'SKU Name', w:340, maxW:340, wrap:true },
-          { key:'vco_sku_code', label:'WMS SKU', w:130 },
-          // Channel the SKU sold through ("Multiple" when it spans several).
-          { key:'source', label:'Source', w:150 },
-          { key:'sku_type', label:'SKU Type', w:90 },
-          { key:'product_name', label:'Product', w:240, maxW:240, wrap:true },
-          { key:'parent_name', label:'Category', w:150 },
-          { key:'sub_cat_name', label:'Sub Cat', w:140 },
-          { key:'sub_sub_cat_name', label:'Sub Sub Cat', w:150 },
-          { key:'vco_brand', label:'Brand', w:70 },
           { key:'orders', label:'Orders', right:true },
           { key:'lines', label:'Lines', right:true },
           { key:'qty', label:'Qty', right:true },
