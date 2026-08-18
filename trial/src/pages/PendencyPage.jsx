@@ -42,7 +42,7 @@ export default function PendencyPage({ data }) {
         <Card title="Pendency Aging Distribution" height={220}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={agingBuckets} margin={{ top:4, right:8, bottom:0, left:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="name" tick={{ fill:'var(--text3)', fontSize:11 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={30}/>
               <Tooltip content={<TT/>}/>

@@ -52,7 +52,7 @@ export default function ChannelsPage({ data }) {
         <Card title="Channel Revenue Split" height={220}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={byChan} layout="vertical" margin={{ left:4, right:50, top:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
+              <CartesianGrid stroke="var(--grid)" horizontal={false}/>
               <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={fmtCr}/>
               <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={95} tickLine={false} axisLine={false}/>
               <Tooltip content={<TT/>}/>
@@ -65,7 +65,7 @@ export default function ChannelsPage({ data }) {
         <Card title="Channel Orders Count" height={220}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={byChan} margin={{ top:4, right:8, bottom:20, left:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="name" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false} angle={-25} textAnchor="end"/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={30}/>
               <Tooltip content={<TT/>}/>

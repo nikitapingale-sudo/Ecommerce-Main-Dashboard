@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { X, Plus, Minus } from 'lucide-react';
-import { KPI, KPIGrid, Card, FunnelBar, StatList, MoversCard, InsightBar } from '../components/UI';
-import { metrics, groupArr, groupByDate, fetchSummary, fmt, fmtCr, pct, STATUS_COLOR, COLORS } from '../utils/dataEngine';
+import { Card, FunnelBar, StatList, MoversCard, InsightBar } from '../components/UI';
+import { metrics, groupArr, groupByDate, fetchSummary, fmt, fmtCr, pct, STATUS_COLOR, COLORS, ORDINAL } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -21,40 +21,147 @@ const kmt = (n) => {
 };
 const KROW = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 };
 const FROW = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 };
-const SEG_COLORS = { '1P': '#4f46e5', '3P': '#2563eb', 'B2B': '#7c3aed' };
+// Colour follows the ENTITY, not its rank — the bars are sorted by size, so
+// a rank-based colour would repaint the segments whenever the order changed.
+const SEG_COLORS = { '1P': 'var(--series-1)', '3P': 'var(--series-2)', 'B2B': 'var(--series-7)' };
 
-/* ── Tapered funnel chart — colored trapezoid layer + non-clipped text overlay
-      so labels are never cut off even in narrow (small-value) segments. ─────── */
-function FunnelChart({ title, rows, format }) {
+/* ── Plain horizontal breakdown — replaces the tapered trapezoid funnels.
+      The trapezoids implied a sequential drop-off between rows that does not
+      exist (1P/3P/B2B are parallel segments, not funnel stages), and clipped
+      their own labels. A thin bar against a recessive track reads the same
+      magnitude honestly. Ordered by size, so the ordinal ramp applies.
+      Every row is direct-labelled, which is also the relief the mid-lightness
+      slots need to clear the contrast check. ─────────────────────────────── */
+function BarBreakdown({ title, subtitle, rows, format, palette }) {
   const fmtV = format || kmt;
   const list = (rows || []).filter(r => r && (r.value || 0) > 0).sort((a, b) => (b.value || 0) - (a.value || 0));
   const max = list.length ? (list[0].value || 1) : 1;
   const total = list.reduce((s, r) => s + (r.value || 0), 0) || 1;
-  const w = (v) => Math.max((v || 0) / max * 100, 40);   // 40% floor so labels fit
+  const ramp = palette || ORDINAL;
   return (
-    <Card title={title} height="auto">
+    <Card title={title} subtitle={subtitle} height="auto">
       {list.length === 0 ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>No data</div> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 11, paddingTop: 2 }}>
           {list.map((r, i) => {
-            const top = w(r.value);
-            const bot = w(i < list.length - 1 ? list[i + 1].value : (r.value || 0) * 0.72);
-            const col = r.color || COLORS[i % COLORS.length];
-            const p = (r.value || 0) / total * 100;
+            const share = (r.value || 0) / total * 100;
+            const w = Math.max((r.value || 0) / max * 100, 1.5);
+            const col = r.color || ramp[Math.min(i, ramp.length - 1)];
             return (
-              <div key={i} title={`${r.name}: ${fmtV(r.value || 0)} · ${p.toFixed(1)}%`}
-                   style={{ position: 'relative', height: 46 }}>
-                <div style={{ position: 'absolute', inset: 0, background: col,
-                              clipPath: `polygon(${(100 - top) / 2}% 0, ${(100 + top) / 2}% 0, ${(100 + bot) / 2}% 100%, ${(100 - bot) / 2}% 100%)` }}/>
-                <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
-                              alignItems: 'center', justifyContent: 'center', lineHeight: 1.12, color: '#fff',
-                              textAlign: 'center', padding: '0 8px', textShadow: '0 1px 2px rgba(0,0,0,.4)' }}>
-                  <span style={{ fontSize: 14, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtV(r.value || 0)}</span>
-                  <span style={{ fontSize: 9.5, fontWeight: 600, opacity: 0.95, whiteSpace: 'nowrap' }}>{r.name} · {p.toFixed(1)}%</span>
+              <div key={r.name}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text2)', overflow: 'hidden',
+                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap',
+                                 fontVariantNumeric: 'tabular-nums' }}>
+                    {fmtV(r.value || 0)}
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text3)', marginLeft: 6 }}>{share.toFixed(1)}%</span>
+                  </span>
+                </div>
+                <div style={{ height: 8, borderRadius: 4, background: 'var(--surface2)', overflow: 'hidden' }}>
+                  <div style={{ width: `${w}%`, height: '100%', background: col, borderRadius: 4 }}/>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+    </Card>
+  );
+}
+
+/* ── Horizontal order-lifecycle funnel.
+      These five outcomes carry good/bad MEANING, so they wear the reserved
+      status colours rather than series hues — each with an icon and a written
+      label, so the colour never carries the meaning on its own. Rows are
+      widest-first; the width is the share of all orders. ─────────────────── */
+const LIFECYCLE_TONE = {
+  Delivered:      { icon: '✅', color: 'var(--st-good)' },
+  'In Transit':   { icon: '🚚', color: 'var(--ord-2)' },
+  Received:       { icon: '📥', color: 'var(--ord-1)' },
+  'RTO / Returns':{ icon: '🔁', color: 'var(--st-serious)' },
+  Cancelled:      { icon: '❌', color: 'var(--st-critical)' },
+};
+
+function LifecycleFunnel({ stages, onPick }) {
+  const list = (stages || []).slice().sort((a, b) => (b.value || 0) - (a.value || 0));
+  const max = list.length ? Math.max(list[0].value || 1, 1) : 1;
+  return (
+    <Card title="🚦 Order Lifecycle" subtitle="Share of all orders · click a stage to drill through" height="auto">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 2 }}>
+        {list.map((s) => {
+          const tone = LIFECYCLE_TONE[s.name] || { icon: '•', color: 'var(--ord-3)' };
+          const w = Math.max((s.value || 0) / max * 100, 1.5);
+          return (
+            <div key={s.name} onClick={() => onPick && onPick(s)}
+                 title={`${s.name}: ${(s.value || 0).toLocaleString('en-IN')} orders · ${s.pct.toFixed(1)}%`}
+                 style={{ display: 'grid', gridTemplateColumns: '150px 1fr 120px', alignItems: 'center',
+                          gap: 12, cursor: onPick ? 'pointer' : 'default' }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text2)', display: 'flex',
+                             alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 13 }}>{tone.icon}</span>{s.name}
+              </span>
+              <div style={{ height: 22, borderRadius: 5, background: 'var(--surface2)', overflow: 'hidden' }}>
+                <div style={{ width: `${w}%`, height: '100%', background: tone.color, borderRadius: 5 }}/>
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', textAlign: 'right',
+                             fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                {s.pct.toFixed(1)}%
+                <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text3)' }}>
+                  {(s.value || 0).toLocaleString('en-IN')}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* ── Day-on-day / week-on-week movement table. A table, not a chart: six
+      numbers with their deltas is reading work, not shape work. ─────────── */
+function DeltaCell({ v }) {
+  if (v === null || v === undefined || Number.isNaN(v)) {
+    return <span style={{ color: 'var(--text3)' }}>—</span>;
+  }
+  const up = v >= 0;
+  return (
+    <span style={{ color: up ? 'var(--green)' : 'var(--red)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+      {up ? '▲' : '▼'} {Math.abs(v).toFixed(1)}%
+    </span>
+  );
+}
+
+function DeltaTable({ rows }) {
+  const TH = { textAlign: 'right', fontSize: 10, fontWeight: 700, color: 'var(--text3)',
+               textTransform: 'uppercase', letterSpacing: '.04em', padding: '0 0 8px' };
+  const TD = { textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: 'var(--text)',
+               padding: '9px 0', fontVariantNumeric: 'tabular-nums', borderTop: '1px solid var(--border)' };
+  return (
+    <Card title="📊 DoD & WoW" subtitle="Latest day vs previous · last 7 days vs prior 7" height="auto">
+      {!rows ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Not enough history</div> : (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ ...TH, textAlign: 'left' }}>Metric</th>
+              <th style={TH}>Latest day</th>
+              <th style={TH}>DoD</th>
+              <th style={TH}>Last 7d</th>
+              <th style={TH}>WoW</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.label}>
+                <td style={{ ...TD, textAlign: 'left', fontWeight: 600, color: 'var(--text2)' }}>{r.label}</td>
+                <td style={TD}>{r.fmt(r.day)}</td>
+                <td style={TD}><DeltaCell v={r.dod}/></td>
+                <td style={TD}>{r.fmt(r.week)}</td>
+                <td style={TD}><DeltaCell v={r.wow}/></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </Card>
   );
@@ -130,7 +237,7 @@ function DrillModal({ drill, data, onClose }) {
               <defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.25}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
               </linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={40} tickFormatter={isMoney ? fmtCr : undefined}/>
               <Tooltip content={<TT/>}/>
@@ -237,6 +344,32 @@ export default function OverviewPage({ data, filters, goto }) {
   // Share of total orders for a status count (for "% above, number below").
   const share = (n) => m.orders > 0 ? (n / m.orders * 100) : 0;
 
+  // Order-lifecycle stages for the horizontal funnel.
+  const lifecycle = useMemo(() => ([
+    { name: 'Delivered',     value: m.delivered, pct: m.delivRate,        drill: 'Delivered' },
+    { name: 'In Transit',    value: m.inTransit, pct: share(m.inTransit), drill: 'In Transit' },
+    { name: 'Received',      value: m.received,  pct: share(m.received),  drill: 'Received' },
+    { name: 'RTO / Returns', value: m.rto,       pct: m.rtoRate,          drill: 'RTO / Returns' },
+    { name: 'Cancelled',     value: m.cancelled, pct: m.cancelRate,       drill: 'Cancelled' },
+  ]), [m]);
+
+  // Day-on-day and week-on-week movement for the table.
+  const deltaRows = useMemo(() => {
+    const d = groupByDate(data, 'day');
+    if (d.length < 3) return null;
+    const sum = (arr, k) => arr.reduce((s, r) => s + (r[k] || 0), 0);
+    const pc = (a, b) => (b ? (a - b) / b * 100 : null);
+    const cur = d[d.length - 1], prv = d[d.length - 2];
+    const l7 = d.slice(-7), p7 = d.slice(-14, -7);
+    const mk = (key, label, fmtFn) => ({
+      label, fmt: fmtFn,
+      day: cur?.[key] || 0, dod: pc(cur?.[key] || 0, prv?.[key] || 0),
+      week: sum(l7, key),   wow: pc(sum(l7, key), sum(p7, key)),
+    });
+    const n = (v) => Math.round(v || 0).toLocaleString('en-IN');
+    return [mk('orders', 'Orders', n), mk('revenue', 'Revenue', fmtCr), mk('qty', 'Qty', n)];
+  }, [data]);
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
       <DrillModal drill={drill} data={data} onClose={() => setDrill(null)}/>
@@ -273,48 +406,47 @@ export default function OverviewPage({ data, filters, goto }) {
           <StatCard label="Refund Amount"    value={fmtCr(m.refundAmount)}    accent="#ea580c"/>
           <StatCard label="Total Qty"     value={kmt(m.qty)}          accent="#2563eb" sub={wowSub(wow.qty)}/>
         </div>
-        <div style={FROW}>
-          <FunnelChart title="🗂️ Orders by Segment"      format={kmt}   rows={segRows('orders')}/>
-          <FunnelChart title="💰 Revenue by Segment (Cr)" format={fmtCr} rows={segRows('revenue')}/>
-          <FunnelChart title="📦 Qty by Segment"          format={kmt}   rows={segRows('qty')}/>
-          <FunnelChart title="🧾 Amount Flow (Cr)"        format={fmtCr} rows={[
-            { name:'Order Amount',     value:m.orderAmount,     color:'#4f46e5' },
-            { name:'Cancelled Amount', value:m.cancelledAmount, color:'#e11d48' },
-            { name:'Refund Amount',    value:m.refundAmount,    color:'#ea580c' },
-            { name:'Final Revenue',    value:m.netRevenue,      color:'#0d9488' },
-          ]}/>
-        </div>
       </KpiSection>
 
-      {/* ── Order economics. Total Qty lives in the headline row above;
-             Fulfillment % / Cancelled Order % / Return-RTO % are the same
-             numbers as the Delivery Rate / Cancelled / RTO KPI cards below. ── */}
+      {/* ── Order economics. Total Qty lives in the headline row above. ── */}
       <KpiSection>
         <div style={KROW}>
-          <StatCard label="Total Line Item" value={kmt(m.lines)}/>
-          <StatCard label="ASP"             value={fmtCr(m.asp)}/>
-          <StatCard label="AOV"             value={fmtCr(m.aov)}/>
-          <StatCard label="COD %"           value={pct(m.codPct)}/>
+          <StatCard label="Total Line Item"   value={kmt(m.lines)}/>
+          <StatCard label="ASP"               value={fmtCr(m.asp)}/>
+          <StatCard label="AOV"               value={fmtCr(m.aov)}/>
+          <StatCard label="COD %"             value={pct(m.codPct)}/>
+          <StatCard label="Shipping Charges"  value={fmtCr(m.delCharges)}/>
         </div>
       </KpiSection>
 
-      {/* ── Status & fulfilment KPIs (click any card to drill through).
-             Total Orders / Gross Revenue / Units Sold were dropped from here —
-             they repeat the headline row above. ── */}
-      <KPIGrid cols={3}>
-        <KPI icon="✅" label="Delivery Rate"    value={pct(m.delivRate)}
-             sub={`${m.delivered.toLocaleString()} delivered`}
-             color={m.delivRate >= 60 ? '#16a34a' : m.delivRate >= 45 ? '#d97706' : '#e11d48'}
-             onClick={()=>setDrill({ label:'Delivered', field:'orders', icon:'✅' })}/>
-        <KPI icon="❌" label="Cancelled"     value={pct(m.cancelRate)}     sub={`${m.cancelled.toLocaleString()} orders`}  color={m.cancelRate > 15 ? '#e11d48' : '#ea580c'} onClick={()=>setDrill({ label:'Cancelled', field:'orders', icon:'❌' })}/>
-        <KPI icon="🔁" label="RTO / Returns" value={pct(m.rtoRate)}        sub={`${m.rto.toLocaleString()} orders`}        color={m.rtoRate > 8 ? '#e11d48' : '#db2777'}     onClick={()=>setDrill({ label:'RTO / Returns', field:'orders', icon:'🔁' })}/>
-        <KPI icon="🚚" label="In Transit"    value={pct(share(m.inTransit))} sub={`${m.inTransit.toLocaleString()} orders`} color="#2563eb" onClick={()=>setDrill({ label:'In Transit', field:'orders', icon:'🚚' })}/>
-        <KPI icon="📥" label="Received"      value={pct(share(m.received))}  sub={`${m.received.toLocaleString()} orders`}  color="#d97706" onClick={()=>setDrill({ label:'Received', field:'orders', icon:'📥' })}/>
-        <KPI icon="🚚" label="Shipping Charges" value={fmtCr(m.delCharges)}  sub="Collected"                                color="#7c3aed" onClick={()=>setDrill({ label:'Shipping Charges', field:'revenue', icon:'🚚' })}/>
-      </KPIGrid>
+      {/* ── Order lifecycle (horizontal funnel) + segment splits.
+             The status KPI cards that used to sit here said the same thing in
+             six separate tiles; the funnel shows the same five outcomes with
+             their relative size visible at a glance. ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.35fr) minmax(0,1fr)', gap:16 }}>
+        <LifecycleFunnel stages={lifecycle}
+          onPick={(s)=>setDrill({ label:s.drill, field:'orders', icon:(LIFECYCLE_TONE[s.name]||{}).icon || '•' })}/>
+        <BarBreakdown title="🧾 Amount Flow" subtitle="Gross → deductions → realised (Cr)" format={fmtCr} rows={[
+          { name:'Total Revenue',    value:m.rev,             color:'var(--ord-2)' },
+          { name:'Cancelled Amount', value:m.cancelledAmount, color:'var(--st-critical)' },
+          { name:'Refund Amount',    value:m.refundAmount,    color:'var(--st-serious)' },
+          { name:'Final Revenue',    value:m.netRevenue,      color:'var(--st-good)' },
+        ]}/>
+      </div>
 
-      {/* ── Top Movers (last 30d vs prior 30d) ── */}
-      <MoversCard title="🚀 Top Movers — Categories" movers={data.movers && data.movers.category}/>
+      <div style={FROW}>
+        <BarBreakdown title="🗂️ Orders by Segment"  format={kmt}   rows={segRows('orders')}/>
+        <BarBreakdown title="💰 Revenue by Segment" subtitle="Cr" format={fmtCr} rows={segRows('revenue')}/>
+        <BarBreakdown title="📦 Qty by Segment"     format={kmt}   rows={segRows('qty')}/>
+      </div>
+
+      {/* ── Orders by Channel raised above the DoD/WoW movement table. ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)', gap:16 }}>
+        <Card title="📡 Orders by Channel" subtitle="Orders & share of total" height="auto">
+          <StatList items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.orders }))} colors={COLORS}/>
+        </Card>
+        <DeltaTable rows={deltaRows}/>
+      </div>
 
       {/* ── Trend + Funnel ── */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 320px', gap:16 }}>
@@ -339,7 +471,7 @@ export default function OverviewPage({ data, filters, goto }) {
                   <stop offset="5%" stopColor="#059669" stopOpacity={0.2}/><stop offset="95%" stopColor="#059669" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={35}/>
               <Tooltip content={<TT/>}/>
@@ -368,7 +500,7 @@ export default function OverviewPage({ data, filters, goto }) {
         <Card title="📅 Monthly Revenue" height={220}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={groupByDate(data,'month')} margin={{ top:4, right:8, bottom:0, left:8 }} barCategoryGap="12%">
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={80} tickFormatter={fmtCr}/>
               <Tooltip content={<TT/>} cursor={{ fill:'var(--surface2)' }}/>
@@ -378,20 +510,19 @@ export default function OverviewPage({ data, filters, goto }) {
         </Card>
       </div>
 
-      {/* ── Orders by Channel + Payment (count + share) ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-        <Card title="📡 Orders by Channel" subtitle="Orders & share of total" height="auto">
-          <StatList items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.orders }))} colors={COLORS}/>
-        </Card>
-        <Card title="💳 Orders by Payment" subtitle="Orders & share of total" height="auto">
-          <StatList items={byPay.map(p => ({ name: p.name, value: p.orders }))} colors={COLORS}/>
-        </Card>
-      </div>
+      {/* ── Orders by Payment (Channel moved up, above the DoD/WoW table) ── */}
+      <Card title="💳 Orders by Payment" subtitle="Orders & share of total" height="auto">
+        <StatList items={byPay.map(p => ({ name: p.name, value: p.orders }))} colors={COLORS}/>
+      </Card>
 
       {/* ── Top Categories by Revenue — click + to drill parent → sub-cat → sub-sub → product ── */}
       <Card title="📚 Top Categories by Revenue" subtitle="Click + to drill down: parent → sub-category → sub-sub → product" height="auto">
         <HierTree nodes={data.hierarchy}/>
       </Card>
+
+      {/* ── Top Movers, last — closing note on the page rather than a mid-page
+             interruption between the KPIs and the charts. ── */}
+      <MoversCard title="🚀 Top Movers — Categories" movers={data.movers && data.movers.category}/>
     </div>
   );
 }
