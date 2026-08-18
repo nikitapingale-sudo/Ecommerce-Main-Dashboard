@@ -369,7 +369,11 @@ def build_query(days=0, date_from=None, date_to=None):
           CAST(NULL AS varchar)                              AS coupon_code,
           CAST('3P Marketplace' AS varchar)                  AS order_category,
           CAST('Ecommerce' AS varchar)                       AS finance_exam_category,
-          CAST(NULL AS varchar)                              AS payment_sources,
+          -- The 3P feed carries no payment method. Labelled rather than left
+          -- NULL, which would fall into the dashboard's "Unknown" bucket and
+          -- read as missing data instead of "settled by the marketplace".
+          -- A Viniculum row with a genuinely absent method still reads Unknown.
+          CAST('3P Payment' AS varchar)                      AS payment_sources,
           CAST('3P' AS varchar)                              AS purchase_level,
           CAST('3P Online' AS varchar)                       AS order_class,
           0                                                  AS has_cancelled_date,
