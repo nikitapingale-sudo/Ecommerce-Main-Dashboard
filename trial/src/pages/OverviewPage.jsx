@@ -1,8 +1,8 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { X, Plus, Minus } from 'lucide-react';
-import { Card, FunnelBar, StatList, MoversCard, InsightBar } from '../components/UI';
-import { metrics, groupArr, groupByDate, fetchSummary, fmt, fmtCr, pct, STATUS_COLOR, COLORS, ORDINAL } from '../utils/dataEngine';
+import { Card, StatList, MoversCard, InsightBar } from '../components/UI';
+import { metrics, groupArr, groupByDate, fmt, fmtCr, pct, STATUS_COLOR, COLORS, ORDINAL, FILTER_OPTIONS } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -25,40 +25,34 @@ const FROW = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(24
 // a rank-based colour would repaint the segments whenever the order changed.
 const SEG_COLORS = { '1P': 'var(--series-1)', '3P': 'var(--series-2)', 'B2B': 'var(--series-7)' };
 
-/* ── Plain horizontal breakdown — replaces the tapered trapezoid funnels.
-      The trapezoids implied a sequential drop-off between rows that does not
-      exist (1P/3P/B2B are parallel segments, not funnel stages), and clipped
-      their own labels. A thin bar against a recessive track reads the same
-      magnitude honestly. Ordered by size, so the ordinal ramp applies.
-      Every row is direct-labelled, which is also the relief the mid-lightness
-      slots need to clear the contrast check. ─────────────────────────────── */
-function BarBreakdown({ title, subtitle, rows, format, palette }) {
+/* ── Tapered funnel box (the original segment look, restored on request).
+      Colored trapezoid layer + a non-clipped text overlay, so labels stay
+      readable even in the narrow segments. ──────────────────────────────── */
+function FunnelChart({ title, subtitle, rows, format }) {
   const fmtV = format || kmt;
   const list = (rows || []).filter(r => r && (r.value || 0) > 0).sort((a, b) => (b.value || 0) - (a.value || 0));
   const max = list.length ? (list[0].value || 1) : 1;
   const total = list.reduce((s, r) => s + (r.value || 0), 0) || 1;
-  const ramp = palette || ORDINAL;
+  const w = (v) => Math.max((v || 0) / max * 100, 42);   // floor so labels fit
   return (
     <Card title={title} subtitle={subtitle} height="auto">
       {list.length === 0 ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>No data</div> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 11, paddingTop: 2 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 4 }}>
           {list.map((r, i) => {
-            const share = (r.value || 0) / total * 100;
-            const w = Math.max((r.value || 0) / max * 100, 1.5);
-            const col = r.color || ramp[Math.min(i, ramp.length - 1)];
+            const top = w(r.value);
+            const bot = w(i < list.length - 1 ? list[i + 1].value : (r.value || 0) * 0.74);
+            const col = r.color || ORDINAL[Math.min(i, ORDINAL.length - 1)];
+            const p = (r.value || 0) / total * 100;
             return (
-              <div key={r.name}>
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text2)', overflow: 'hidden',
-                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap',
-                                 fontVariantNumeric: 'tabular-nums' }}>
-                    {fmtV(r.value || 0)}
-                    <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text3)', marginLeft: 6 }}>{share.toFixed(1)}%</span>
-                  </span>
-                </div>
-                <div style={{ height: 8, borderRadius: 4, background: 'var(--surface2)', overflow: 'hidden' }}>
-                  <div style={{ width: `${w}%`, height: '100%', background: col, borderRadius: 4 }}/>
+              <div key={r.name} title={`${r.name}: ${fmtV(r.value || 0)} · ${p.toFixed(1)}%`}
+                   style={{ position: 'relative', height: 50 }}>
+                <div style={{ position: 'absolute', inset: 0, background: col,
+                              clipPath: `polygon(${(100 - top) / 2}% 0, ${(100 + top) / 2}% 0, ${(100 + bot) / 2}% 100%, ${(100 - bot) / 2}% 100%)` }}/>
+                <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', justifyContent: 'center', lineHeight: 1.15, color: '#fff',
+                              textAlign: 'center', padding: '0 8px', textShadow: '0 1px 2px rgba(0,0,0,.45)' }}>
+                  <span style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtV(r.value || 0)}</span>
+                  <span style={{ fontSize: 9.5, fontWeight: 600, opacity: 0.95, whiteSpace: 'nowrap' }}>{r.name} · {p.toFixed(1)}%</span>
                 </div>
               </div>
             );
@@ -68,6 +62,52 @@ function BarBreakdown({ title, subtitle, rows, format, palette }) {
     </Card>
   );
 }
+
+/* ── Ranked horizontal breakdown — used for Channel and Payment.
+      Rank + swatch + name on one line, bar and figures beneath, so long
+      channel names never fight the numbers for space.
+      The swatch colour is keyed to the entity's position in the FULL option
+      list, not to its rank in this view — filtering to fewer channels must
+      not repaint the survivors. ────────────────────────────────────────── */
+function RankedBars({ items, format, colorKey }) {
+  const fmtV = format || ((v) => (v || 0).toLocaleString('en-IN'));
+  const list = (items || []).filter(r => (r.value || 0) > 0).sort((a, b) => b.value - a.value);
+  if (!list.length) return <div style={{ fontSize: 12, color: 'var(--text3)' }}>No data</div>;
+  const max = list[0].value || 1;
+  const total = list.reduce((s, r) => s + (r.value || 0), 0) || 1;
+  const slot = (name, i) => {
+    const all = (colorKey && FILTER_OPTIONS[colorKey]) || [];
+    const idx = all.indexOf(name);
+    return COLORS[((idx >= 0 ? idx : i) % COLORS.length)];
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+      {list.map((r, i) => {
+        const share = (r.value || 0) / total * 100;
+        return (
+          <div key={r.name}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', width: 16,
+                             fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: slot(r.name, i), flexShrink: 0 }}/>
+              <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: 'var(--text)', overflow: 'hidden',
+                             textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap',
+                             fontVariantNumeric: 'tabular-nums' }}>{fmtV(r.value)}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', width: 46, textAlign: 'right',
+                             fontVariantNumeric: 'tabular-nums' }}>{share.toFixed(1)}%</span>
+            </div>
+            <div style={{ height: 7, borderRadius: 4, background: 'var(--surface2)', overflow: 'hidden', marginLeft: 25 }}>
+              <div style={{ width: `${Math.max(r.value / max * 100, 1.5)}%`, height: '100%',
+                            background: slot(r.name, i), borderRadius: 4 }}/>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 
 /* ── Horizontal order-lifecycle funnel.
       These five outcomes carry good/bad MEANING, so they wear the reserved
@@ -307,12 +347,10 @@ function HierTree({ nodes }) {
 
 export default function OverviewPage({ data, filters, goto }) {
   const [gran, setGran] = useState('day');
-  const [drillStatus, setDrillStatus] = useState(null);
   const [drill, setDrill] = useState(null);            // KPI drill-through modal
 
   const m       = useMemo(() => metrics(data), [data]);
   const trend   = useMemo(() => groupByDate(data, gran), [data, gran]);
-  const byStatus= useMemo(() => groupArr(data, 'order_status_group'), [data]);
   const byChan  = useMemo(() => groupArr(data, 'vco_channel_name'), [data]);
   const byPay   = useMemo(() => groupArr(data, 'payment_sources'), [data]);
   // Segment breakdown (orders/lines/qty/revenue per 1P/3P/B2B) — for the funnels.
@@ -329,17 +367,6 @@ export default function OverviewPage({ data, filters, goto }) {
     return { orders: pct2(sum(l,'orders'), sum(p,'orders')), revenue: pct2(sum(l,'revenue'), sum(p,'revenue')),
              qty: pct2(sum(l,'qty'), sum(p,'qty')) };
   }, [data]);
-
-  // Drill — fetch a status-scoped bundle from the server.
-  const [drillBundle, setDrillBundle] = useState(null);
-  useEffect(() => {
-    if (!drillStatus) { setDrillBundle(null); return; }
-    let alive = true;
-    fetchSummary({ ...filters, statuses: [drillStatus] })
-      .then(b => { if (alive) setDrillBundle(b); }).catch(() => {});
-    return () => { alive = false; };
-  }, [drillStatus, filters]);
-  const drillTrend = useMemo(() => groupByDate(drillBundle || data, gran), [drillBundle, data, gran]);
 
   // Share of total orders for a status count (for "% above, number below").
   const share = (n) => m.orders > 0 ? (n / m.orders * 100) : 0;
@@ -423,52 +450,47 @@ export default function OverviewPage({ data, filters, goto }) {
              The status KPI cards that used to sit here said the same thing in
              six separate tiles; the funnel shows the same five outcomes with
              their relative size visible at a glance. ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.35fr) minmax(0,1fr)', gap:16 }}>
-        <LifecycleFunnel stages={lifecycle}
-          onPick={(s)=>setDrill({ label:s.drill, field:'orders', icon:(LIFECYCLE_TONE[s.name]||{}).icon || '•' })}/>
-        <BarBreakdown title="🧾 Amount Flow" subtitle="Gross → deductions → realised (Cr)" format={fmtCr} rows={[
-          { name:'Total Revenue',    value:m.rev,             color:'var(--ord-2)' },
-          { name:'Cancelled Amount', value:m.cancelledAmount, color:'var(--st-critical)' },
-          { name:'Refund Amount',    value:m.refundAmount,    color:'var(--st-serious)' },
-          { name:'Final Revenue',    value:m.netRevenue,      color:'var(--st-good)' },
-        ]}/>
-      </div>
+      <LifecycleFunnel stages={lifecycle}
+        onPick={(s)=>setDrill({ label:s.drill, field:'orders', icon:(LIFECYCLE_TONE[s.name]||{}).icon || '•' })}/>
 
+      {/* Segment splits — funnel boxes, as originally designed. */}
       <div style={FROW}>
-        <BarBreakdown title="🗂️ Orders by Segment"  format={kmt}   rows={segRows('orders')}/>
-        <BarBreakdown title="💰 Revenue by Segment" subtitle="Cr" format={fmtCr} rows={segRows('revenue')}/>
-        <BarBreakdown title="📦 Qty by Segment"     format={kmt}   rows={segRows('qty')}/>
+        <FunnelChart title="🗂️ Orders by Segment"  format={kmt}   rows={segRows('orders')}/>
+        <FunnelChart title="💰 Revenue by Segment" subtitle="Cr" format={fmtCr} rows={segRows('revenue')}/>
+        <FunnelChart title="📦 Qty by Segment"     format={kmt}   rows={segRows('qty')}/>
       </div>
 
       {/* ── Orders by Channel raised above the DoD/WoW movement table. ── */}
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)', gap:16 }}>
-        <Card title="📡 Orders by Channel" subtitle="Orders & share of total" height="auto">
-          <StatList items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.orders }))} colors={COLORS}/>
+        <Card title="📡 Orders by Channel" subtitle="Ranked by orders · share of total" height="auto">
+          <RankedBars colorKey="channels"
+            items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.orders }))}/>
         </Card>
         <DeltaTable rows={deltaRows}/>
       </div>
 
-      {/* ── Trend + Funnel ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 320px', gap:16 }}>
-        <Card title={`${drillStatus ? `📌 Drill: ${drillStatus}` : '📈 Trend'}`}
-          subtitle={drillStatus ? `Click funnel bar to change · Click again to reset` : 'Orders & qty over time'}
+      {/* ── Trend (full width; the Status Funnel beside it was removed, and with
+             it the click-to-drill-by-status plumbing it was the only trigger for.
+             The Order Lifecycle funnel above covers the same breakdown). ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:16 }}>
+        <Card title="📈 Trend"
+          subtitle="Orders & qty over time"
           height={260}
           right={
             <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-              {drillStatus && <button onClick={()=>setDrillStatus(null)} style={{ padding:'3px 10px', borderRadius:5, fontSize:10, fontWeight:700, background:'var(--red-bg)', color:'var(--red)', border:'1px solid #fca5a5' }}>✕ Clear</button>}
               {['day','week','month'].map(g=>(
                 <button key={g} onClick={()=>setGran(g)} style={{ padding:'3px 10px', borderRadius:5, fontSize:10, fontWeight:700, background:gran===g?'var(--accent)':'var(--surface2)', color:gran===g?'#fff':'var(--text2)', border:'1px solid var(--border)' }}>{g.charAt(0).toUpperCase()+g.slice(1)}</button>
               ))}
             </div>
           }>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={drillTrend} margin={{ top:4, right:8, bottom:0, left:0 }}>
+            <AreaChart data={trend} margin={{ top:4, right:8, bottom:0, left:0 }}>
               <defs>
                 <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="var(--series-1)" stopOpacity={0.22}/><stop offset="95%" stopColor="var(--series-1)" stopOpacity={0}/>
                 </linearGradient>
                 <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#059669" stopOpacity={0.2}/><stop offset="95%" stopColor="#059669" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="var(--series-3)" stopOpacity={0.22}/><stop offset="95%" stopColor="var(--series-3)" stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="var(--grid)" vertical={false}/>
@@ -476,21 +498,12 @@ export default function OverviewPage({ data, filters, goto }) {
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={35}/>
               <Tooltip content={<TT/>}/>
               <Legend wrapperStyle={{ fontSize:11, paddingTop:6 }} iconType="plainline"/>
-              <Area type="monotone" dataKey="orders" name="Orders" stroke="#4f46e5" strokeWidth={2} fill="url(#ga)" dot={false}/>
-              <Area type="monotone" dataKey="qty"    name="Qty"    stroke="#059669" strokeWidth={2} fill="url(#gb)" dot={false}/>
+              <Area type="monotone" dataKey="orders" name="Orders" stroke="var(--series-1)" strokeWidth={2} fill="url(#ga)" dot={false}/>
+              <Area type="monotone" dataKey="qty"    name="Qty"    stroke="var(--series-3)" strokeWidth={2} fill="url(#gb)" dot={false}/>
             </AreaChart>
           </ResponsiveContainer>
         </Card>
 
-        <Card title="🚦 Status Funnel" subtitle="Click to drill into status" height={260}>
-          <div style={{ paddingTop:6 }}>
-            {byStatus.map(s => (
-              <FunnelBar key={s.name} label={s.name} value={s.orders} total={m.orders}
-                color={STATUS_COLOR[s.name]||'var(--accent)'}
-                onClick={()=>setDrillStatus(drillStatus===s.name ? null : s.name)}/>
-            ))}
-          </div>
-        </Card>
       </div>
 
       {/* ── Monthly Revenue (the Order Status Detail list that sat beside it was
@@ -504,15 +517,16 @@ export default function OverviewPage({ data, filters, goto }) {
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={80} tickFormatter={fmtCr}/>
               <Tooltip content={<TT/>} cursor={{ fill:'var(--surface2)' }}/>
-              <Bar dataKey="revenue" name="Revenue" fill="#4f46e5" radius={[4,4,0,0]} maxBarSize={64}/>
+              <Bar dataKey="revenue" name="Revenue" fill="var(--series-1)" radius={[4,4,0,0]} maxBarSize={64}/>
             </BarChart>
           </ResponsiveContainer>
         </Card>
       </div>
 
       {/* ── Orders by Payment (Channel moved up, above the DoD/WoW table) ── */}
-      <Card title="💳 Orders by Payment" subtitle="Orders & share of total" height="auto">
-        <StatList items={byPay.map(p => ({ name: p.name, value: p.orders }))} colors={COLORS}/>
+      <Card title="💳 Orders by Payment" subtitle="Ranked by orders · share of total" height="auto">
+        <RankedBars colorKey="payments"
+          items={byPay.map(p => ({ name: p.name, value: p.orders }))}/>
       </Card>
 
       {/* ── Top Categories by Revenue — click + to drill parent → sub-cat → sub-sub → product ── */}
