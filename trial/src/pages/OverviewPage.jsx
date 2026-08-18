@@ -6,8 +6,10 @@ import { metrics, groupArr, groupByDate, fmt, fmtCr, pct, full, fullMoney, STATU
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
+  // Same formatting as the axis — the tooltip previously showed the raw ISO
+  // string while the axis read "1-Apr", so the two disagreed.
   return <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', fontSize:11, boxShadow:'var(--shadow2)' }}>
-    <div style={{ color:'var(--accent)', fontWeight:700, marginBottom:5 }}>{label}</div>
+    <div style={{ color:'var(--accent)', fontWeight:700, marginBottom:5 }}>{shortDate(label)}</div>
     {payload.map((p,i) => <div key={i} style={{ color:p.color||'var(--text)', marginBottom:2 }}>{p.name}: <b>{p.name?.toLowerCase().includes('rev')?fmt(p.value):p.value?.toLocaleString()}</b></div>)}
   </div>;
 };
@@ -218,18 +220,22 @@ function DeltaCell({ v }) {
 function DeltaTable({ rows }) {
   // Compact: 7 columns in one card, so the padding is trimmed and the numbers
   // sit closer together rather than drifting apart across the width.
+  // width:1% makes each numeric column shrink to its content; the Metric column
+  // has no width and so absorbs the slack. Without it the browser shares the
+  // full card width evenly and the figures drift far apart.
   const TH = { textAlign: 'right', fontSize: 9.5, fontWeight: 700, color: 'var(--text3)',
-               textTransform: 'uppercase', letterSpacing: '.03em', padding: '0 0 5px', whiteSpace: 'nowrap' };
+               textTransform: 'uppercase', letterSpacing: '.03em', padding: '0 0 5px 18px',
+               whiteSpace: 'nowrap', width: '1%' };
   const TD = { textAlign: 'right', fontSize: 12, fontWeight: 700, color: 'var(--text)',
-               padding: '5px 0', fontVariantNumeric: 'tabular-nums',
-               borderTop: '1px solid var(--border)', whiteSpace: 'nowrap' };
+               padding: '5px 0 5px 18px', fontVariantNumeric: 'tabular-nums',
+               borderTop: '1px solid var(--border)', whiteSpace: 'nowrap', width: '1%' };
   return (
     <Card title="📊 DoD & WoW" subtitle="Latest day vs yesterday · last 7 days vs the 7 before" height="auto">
       {!rows ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Not enough history</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
           <thead>
             <tr>
-              <th style={{ ...TH, textAlign: 'left' }}>Metric</th>
+              <th style={{ ...TH, textAlign: 'left', width: 'auto', paddingLeft: 0 }}>Metric</th>
               <th style={TH}>Latest day</th>
               <th style={TH}>Yesterday</th>
               <th style={TH}>DoD</th>
@@ -241,7 +247,7 @@ function DeltaTable({ rows }) {
           <tbody>
             {rows.map(r => (
               <tr key={r.label}>
-                <td style={{ ...TD, textAlign: 'left', fontWeight: 600, color: 'var(--text2)' }}>{r.label}</td>
+                <td style={{ ...TD, textAlign: 'left', fontWeight: 600, color: 'var(--text2)', width: 'auto', paddingLeft: 0 }}>{r.label}</td>
                 <td style={TD}>{r.fmt(r.day)}</td>
                 <td style={{ ...TD, color: 'var(--text2)', fontWeight: 600 }}>{r.fmt(r.prevDay)}</td>
                 <td style={TD}><DeltaCell v={r.dod}/></td>
@@ -358,7 +364,12 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
   const [drill, setDrill] = useState(null);            // KPI drill-through modal
 
   const m       = useMemo(() => metrics(data), [data]);
-  const trend   = useMemo(() => groupByDate(data, gran), [data, gran]);
+  // Sorted defensively. The server already returns these ascending (verified
+  // for day/week/month), but a chart that silently plots out of order is very
+  // hard to spot, and the sort is free at these sizes.
+  const trend = useMemo(
+    () => [...(groupByDate(data, gran) || [])].sort((a, b) => String(a.date).localeCompare(String(b.date))),
+    [data, gran]);
   const byChan  = useMemo(() => groupArr(data, 'vco_channel_name'), [data]);
   const byPay   = useMemo(() => groupArr(data, 'payment_sources'), [data]);
   // Server sends this only when a B2B channel is in the filter.
