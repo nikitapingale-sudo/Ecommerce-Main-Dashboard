@@ -350,7 +350,7 @@ function DrillModal({ drill, data, onClose }) {
           </ResponsiveContainer>
         </div>
 
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)', gap:16 }}>
           <div><div style={{ fontSize:11, fontWeight:800, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8 }}>By Channel</div>
             <StatList items={byChan} format={format} colors={COLORS}/></div>
           <div><div style={{ fontSize:11, fontWeight:800, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8 }}>By Order Status</div>
@@ -435,7 +435,7 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
   }, [data]);
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:14, minWidth:0, maxWidth:'100%' }}>
       <DrillModal drill={drill} data={data} onClose={() => setDrill(null)}/>
 
       <InsightBar items={[
@@ -524,10 +524,11 @@ ${fullMoney(m.delCharges)}`}/>
       {/* ── Trend (full width; the Status Funnel beside it was removed, and with
              it the click-to-drill-by-status plumbing it was the only trigger for.
              The Order Lifecycle funnel above covers the same breakdown). ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16, minWidth:0 }}>
         <Card title="📈 Trend"
-          subtitle="Orders & qty over time"
+          subtitle="Orders & qty over time · scroll sideways for every day"
           height={260}
+          style={{ minWidth:0, overflow:'hidden' }}
           right={
             <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
               {['day','week','month'].map(g=>(
