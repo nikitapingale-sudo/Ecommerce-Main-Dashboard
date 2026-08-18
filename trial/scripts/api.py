@@ -353,6 +353,9 @@ def _load_dataset():
     # only ever returns small bundles, so the dataset itself must be complete.
     rows, elapsed, _ = run_orders_query(days=0, limit=0)
     ds = aggregate.Dataset(rows)
+    # Sheet-driven material type, refreshed on every dataset (re)load.
+    matched = ds.attach_material_type(_effective_material_map())
+    dbm.log(f"Material type attached to {matched:,} of {ds.n:,} rows")
     with _dataset_lock:
         _dataset["ds"] = ds
         _dataset["exp"] = _now() + API_CACHE_TTL
@@ -415,6 +418,96 @@ def get_dataset():
         ds, elapsed = _load_dataset()
         dbm.log(f"Dataset ready: {ds.n} rows in {elapsed:.1f}s (fresh for {API_CACHE_TTL}s)")
         return ds
+
+
+# ── Material-type sheet: { variant_id: revised product type } ────────────────
+_material = {"map": None, "exp": 0}
+_material_lock = threading.Lock()
+# The sheet is refreshed daily, so an hourly re-read is plenty.
+MATERIAL_TTL = int(os.getenv("MATERIAL_TTL", "3600"))
+
+
+def get_material_map():
+    """SKU/component variant id -> revised product type, from the live sheet.
+
+    Fail-soft on purpose: if the sheet is unreachable (VPN, Google blocked by
+    the corporate filter, tab renamed) the previously loaded map keeps serving
+    and the retry is deferred. Losing the sheet must degrade the material-type
+    labelling, not take the dashboard down.
+    """
+    with _material_lock:
+        if _material["map"] is not None and _material["exp"] > _now():
+            return _material["map"]
+        try:
+            import urllib.request, csv, io
+            t0 = _now()
+            req = urllib.request.Request(dbm.MATERIAL_SHEET_URL,
+                                         headers={"User-Agent": "pw-orders-dashboard"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                text = resp.read().decode("utf-8", "replace")
+            rows = list(csv.DictReader(io.StringIO(text)))
+            m = {}
+            for r in rows:
+                k = (r.get(dbm.MATERIAL_ID_COL) or "").strip()
+                v = (r.get(dbm.MATERIAL_TYPE_COL) or "").strip()
+                if k and v:
+                    m[k] = v
+            if not m:
+                raise ValueError(f"sheet parsed but empty — is the '{dbm.MATERIAL_SHEET_TAB}' "
+                                 f"tab or the '{dbm.MATERIAL_ID_COL}' column renamed?")
+            _material["map"] = m
+            _material["exp"] = _now() + MATERIAL_TTL
+            dbm.log(f"Material sheet: {len(m)} variants in {_now()-t0:.1f}s")
+        except Exception as err:
+            kept = len(_material["map"]) if _material["map"] else 0
+            _material["exp"] = _now() + 300          # cool off before retrying
+            dbm.log(f"Material sheet FAILED ({type(err).__name__}: {err}); "
+                    f"keeping {kept} previously loaded entries")
+            if _material["map"] is None:
+                _material["map"] = {}
+        return _material["map"]
+
+
+def _effective_material_map():
+    """Material type per SOLD variant id, for the order-level filter.
+
+    The sheet's "Simple" tab covers simple/component SKUs. Most revenue is sold
+    as bundles (the Arjuna / Yakeen / Lakshya packs), which are not simple
+    products and so are absent from it — mapping the sheet directly left 66% of
+    revenue as "Unknown" and made the Material Type filter close to useless.
+
+    A bundle inherits the material type of its largest component by MRP share,
+    which is the same weighting the component split already uses. Sheet entries
+    always win for variants that appear in it; a bundle whose components are all
+    unmapped still reads Unknown rather than being guessed at.
+    """
+    sheet = get_material_map()
+    eff = dict(sheet)
+    try:
+        bmap = get_bundle_map()
+    except Exception as err:
+        dbm.log(f"Bundle map unavailable for material inheritance ({type(err).__name__}); "
+                f"bundles will read Unknown")
+        return eff
+    inherited = 0
+    for pvid, comps in bmap.items():
+        if pvid in eff:
+            continue
+        best_ratio, best_type = -1.0, None
+        for c in comps:
+            t = sheet.get(str(c.get("cid")))
+            if not t:
+                continue
+            r = c.get("ratio")
+            r = 1.0 if r is None else float(r)
+            if r > best_ratio:
+                best_ratio, best_type = r, t
+        if best_type:
+            eff[pvid] = best_type
+            inherited += 1
+    dbm.log(f"Material map: {len(sheet):,} from sheet + {inherited:,} bundles "
+            f"inherited from their largest component")
+    return eff
 
 
 def get_bundle_map():
@@ -510,6 +603,7 @@ def component_summary(filters, limit=2000):
 
     ds = get_dataset()
     bmap = get_bundle_map()
+    mmap = get_material_map()
     df = ds._sub(filters)
 
     # Lightweight SKU roll-up (qty + revenue per product_variant_id × the
@@ -543,7 +637,10 @@ def component_summary(filters, limit=2000):
                     "component_sku_code": c["sku"],
                     "component_product_type": c["ptype"],
                     "component_status": c["status"],
-                    "study_material_type": c["mtype"],
+                    # The sheet is the business's revised classification and
+                    # overrides gold_product_variants.product_material_type,
+                    # which it genuinely disagrees with for some components.
+                    "study_material_type": mmap.get(str(cid)) or c["mtype"],
                     "qty_component": 0.0, "sales_component": 0.0, "bundles": 0,
                     "_dims": [{} for _ in dim_cols],
                 }

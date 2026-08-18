@@ -426,6 +426,22 @@ def build_query(days=0, date_from=None, date_to=None):
 #  silver ones are superseded), scoped to the PW store org only. Each component
 #  also carries its study-material type (product_material_type), surfaced on the
 #  Component-Level page.
+# ── Material-type override sheet ─────────────────────────────────────────────
+#  A live Google Sheet ("Simple" tab) maps SKU/component variant id -> revised
+#  product type. It is the business's own reclassification and takes precedence
+#  over gold_product_variants.product_material_type, which it genuinely
+#  disagrees with (e.g. the CBSE Question & Concept Banks read 'Authored' in the
+#  warehouse table and 'Non Authored' on the sheet).
+#  Refreshed daily by its owners, so the backend re-reads it on a TTL rather
+#  than importing it once. The gviz endpoint returns CSV for a link-shared sheet
+#  with no credentials.
+MATERIAL_SHEET_ID  = os.getenv("MATERIAL_SHEET_ID", "1pwXJDUSAGrOGJvCxypmQmIp5uQXIWTEW9jX5C_0W11c")
+MATERIAL_SHEET_TAB = os.getenv("MATERIAL_SHEET_TAB", "Simple")
+MATERIAL_SHEET_URL = (f"https://docs.google.com/spreadsheets/d/{MATERIAL_SHEET_ID}"
+                      f"/gviz/tq?tqx=out:csv&sheet={MATERIAL_SHEET_TAB}")
+MATERIAL_ID_COL    = "SKU ID"
+MATERIAL_TYPE_COL  = "revised product type"
+
 PV_TABLE         = "cdp.store.gold_product_variants"
 BUNDLE_MAP_TABLE = "cdp.store.gold_bundle_product_variant_mappings"
 ORG_IDS          = ['5eb393ee95fab7468a79d189']

@@ -24,7 +24,7 @@ const DEFAULT_FILTERS = {
   channels:[], warehouses:[], states:[], payments:[],
   oms:[], orderTypes:[], purchaseLevels:[], categories:[],
   statuses:[], finCats:[], orderCats:[], couriers:[], coupons:[],
-  orderStatuses:[], lineStatuses:[],
+  orderStatuses:[], lineStatuses:[], materialTypes:[],
   // Cancelled / refunded / returned lines are hidden by default; tick them back
   // on in the Line/Item Status filter. See DEFAULT_LINE_STATUS_EXCLUDE.
   lineStatusesExclude:[...DEFAULT_LINE_STATUS_EXCLUDE],
