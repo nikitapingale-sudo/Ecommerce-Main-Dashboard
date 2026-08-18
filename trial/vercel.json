@@ -4,8 +4,8 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/data/live/(.*)", "destination": "https://excluded-palace-experiment-appear.trycloudflare.com/api/$1" },
-    { "source": "/api/(.*)", "destination": "https://excluded-palace-experiment-appear.trycloudflare.com/api/$1" },
+    { "source": "/data/live/(.*)", "destination": "https://usually-they-hardware-mountains.trycloudflare.com/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://usually-they-hardware-mountains.trycloudflare.com/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
