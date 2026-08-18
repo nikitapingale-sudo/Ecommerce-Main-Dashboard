@@ -7,9 +7,6 @@ const PAGE = {
   revenue:    { emoji:'💰', label:'Revenue' },
   channels:   { emoji:'📡', label:'Channels' },
   geographic: { emoji:'🗺️', label:'Geographic' },
-  fulfilment: { emoji:'🚚', label:'Fulfilment' },
-  pendency:   { emoji:'⏳', label:'Pendency' },
-  actions:    { emoji:'🎯', label:'Action Center' },
   products:   { emoji:'📚', label:'Products' },
   coupons:    { emoji:'🎟️', label:'Coupons' },
   skusummary: { emoji:'🧾', label:'SKU Level Summary' },
@@ -23,7 +20,6 @@ const PAGE = {
 const GROUPS = [
   { title:'Assistant',        ids:['ecomwallah'] },
   { title:'Analytics',        ids:['overview','skusummary','components','revenue','channels','geographic'] },
-  { title:'Operations',       ids:['fulfilment','pendency','actions'] },
   { title:'Catalog & Supply', ids:['products','coupons'] },
   { title:'Data',             ids:['rawdata'] },
 ];
