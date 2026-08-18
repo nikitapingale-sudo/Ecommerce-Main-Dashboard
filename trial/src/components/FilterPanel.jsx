@@ -13,7 +13,9 @@ const SECTIONS = [
   { key:'channels',       label:'Channel',           icon:'📡', opt:'channels' },
   { key:'categories',     label:'Category',          icon:'📚', opt:'categories' },
   { key:'payments',       label:'Payment Mode',      icon:'💳', opt:'payments' },
-  { key:'orderTypes',     label:'Order Type',        icon:'🧾', opt:'orderTypes' },
+  // Renamed from "Order Type": it now filters the revised product type from
+  // the live sheet, not vc.material_type.
+  { key:'materialTypes',  label:'Material Type',     icon:'🧾', opt:'materialTypes' },
   { key:'purchaseLevels', label:'Purchase Level',    icon:'🏆', opt:'purchaseLevels' },
   { key:'coupons',        label:'Coupon Code',       icon:'🎟️', opt:'coupons' },
 ];

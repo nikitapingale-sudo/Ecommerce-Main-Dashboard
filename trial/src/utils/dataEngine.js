@@ -373,7 +373,7 @@ export function groupByDate(bundle, gran) {
 export const FILTER_OPTIONS = {
   channels: [], warehouses: [], states: [], payments: [], oms: [], orderTypes: [],
   purchaseLevels: [], categories: [], finCats: [], orderCats: [], couriers: [], coupons: [],
-  orderStatuses: [], lineStatuses: [],
+  orderStatuses: [], lineStatuses: [], materialTypes: [],
   brands: [], statuses: ['Cancelled','Delivered','Packed','Received','Return/Refund','RTO/Lost','Shipped'],
 };
 

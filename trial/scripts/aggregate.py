@@ -23,6 +23,9 @@ FILTER_COLS = {
     "statuses": "order_status_group", "finCats": "finance_exam_category",
     "orderCats": "order_category", "couriers": "delivery_partner", "coupons": "coupon_code",
     "orderStatuses": "final_order_status", "lineStatuses": "final_item_status",
+    # Revised product type from the live sheet — replaces the old "Order Type"
+    # filter, which read vc.material_type.
+    "materialTypes": "material_type",
 }
 # Negative filters: keep everything EXCEPT these values. Used for the
 # Line/Item Status filter, where cancelled/refunded/returned lines are hidden by
@@ -39,7 +42,7 @@ DIM_COLS = {
     "courier": "delivery_partner", "warehouse": "warehouse", "state": "state", "city": "city",
     "parent": "parent_name", "orderType": "order_type", "brand": "vco_brand", "coupon": "coupon_code",
     "orderStatusRaw": "final_order_status", "lineStatusRaw": "final_item_status",
-    "orderClass": "order_class",
+    "orderClass": "order_class", "materialType": "material_type",
 }
 # Values offered by each filter dropdown. Built from the WHOLE dataset, never
 # from the filtered subset: the dashboard hides some statuses by default, and
@@ -52,7 +55,7 @@ OPTION_COLS = {
     "finCats": "finance_exam_category", "orderCats": "order_category",
     "couriers": "delivery_partner", "coupons": "coupon_code",
     "orderStatuses": "final_order_status", "lineStatuses": "final_item_status",
-    "brands": "vco_brand",
+    "brands": "vco_brand", "materialTypes": "material_type",
 }
 OPTION_CAP = 2000          # keep the payload sane for high-cardinality columns
 
@@ -131,6 +134,22 @@ class Dataset:
         dates = df["order_date"].dropna()
         self.min_date = str(dates.min()) if len(dates) else ""
         self.max_date = str(dates.max()) if len(dates) else ""
+
+    # ── material type from the live sheet ──
+    def attach_material_type(self, mapping):
+        """Add `material_type`, mapped from product_variant_id via the sheet.
+
+        Applied after load rather than joined in SQL: the sheet is refreshed
+        daily and independently of the warehouse, and it deliberately overrides
+        gold_product_variants.product_material_type. Anything the sheet does not
+        cover reads "Unknown" rather than silently inheriting the old value.
+        """
+        if "product_variant_id" not in self.df.columns:
+            return 0
+        col = self.df["product_variant_id"].astype("string").map(mapping or {})
+        self.df["material_type"] = col.fillna("Unknown").astype("category")
+        self._options = None          # dropdown values must be rebuilt
+        return int((col.notna()).sum())
 
     # ── filter dropdown values (whole dataset, computed once) ──
     def filter_options(self):
