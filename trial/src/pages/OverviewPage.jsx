@@ -391,6 +391,17 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
   const byPay   = useMemo(() => groupArr(data, 'payment_sources'), [data]);
   // Server sends this only when a B2B channel is in the filter.
   const custRows = useMemo(() => (data && data.customers) || [], [data]);
+
+  // Product material type — sourced from the live sheet (bundles inherit their
+  // largest component's type). revShare is recomputed here so it is the share
+  // of what is on screen, not of some wider set.
+  const matRows = useMemo(() => {
+    const rows = groupArr(data, 'material_type') || [];
+    const tot = rows.reduce((a, r) => a + (r.revenue || 0), 0) || 1;
+    return rows
+      .map(r => ({ ...r, revSharePct: (r.revenue || 0) / tot * 100 }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [data]);
   // Segment breakdown (orders/lines/qty/revenue per 1P/3P/B2B) — for the funnels.
   const bySeg = useMemo(() => ((data.by && data.by.purchaseLevel) || []).filter(r => ['1P', '3P', 'B2B'].includes(r.name)), [data]);
   const segRows = (measure) => bySeg.map(r => ({ name: r.name, value: r[measure] || 0, color: SEG_COLORS[r.name] }));
@@ -597,6 +608,27 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
           ]}
           filename="b2b_customers"
           maxH={520}
+        />
+      )}
+
+      {/* ── Product material type: qty, revenue and revenue share.
+             revShare is recomputed over these rows so the column sums to 100%
+             of what is shown, rather than of a wider set. ── */}
+      {matRows.length > 0 && (
+        <DataTable
+          title="🧱 Product Material Type — from the live sheet"
+          data={matRows}
+          searchable={false}
+          columns={[
+            { key:'name',        label:'Material Type', bold:true, w:240 },
+            { key:'orders',      label:'Orders',   right:true, render:v=>(v||0).toLocaleString('en-IN') },
+            { key:'qty',         label:'Qty',      right:true, render:v=>Math.round(v||0).toLocaleString('en-IN') },
+            { key:'revenue',     label:'Revenue',  right:true, render:v=>fmt(v) },
+            { key:'revSharePct', label:'Revenue %',right:true, render:v=>`${(v||0).toFixed(1)}%` },
+            { key:'asp',         label:'ASP',      right:true, render:v=>fmt(v) },
+          ]}
+          filename="material_type_summary"
+          maxH={420}
         />
       )}
 

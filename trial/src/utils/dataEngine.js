@@ -354,6 +354,7 @@ const COL2KEY = {
   coupon_code:           'coupon',
   final_order_status:    'orderStatusRaw',
   final_item_status:     'lineStatusRaw',
+  material_type:         'materialType',
 };
 
 export function metrics(bundle) {
