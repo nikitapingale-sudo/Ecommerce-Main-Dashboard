@@ -5,17 +5,14 @@ import FilterPanel from './components/FilterPanel';
 import GlobalSearch from './components/GlobalSearch';
 import OverviewPage from './pages/OverviewPage';
 import RevenuePage from './pages/RevenuePage';
-import FulfilmentPage from './pages/FulfilmentPage';
 import ChannelsPage from './pages/ChannelsPage';
 import ProductsPage from './pages/ProductsPage';
 import SKUPage from './pages/SKUPage';
 import GeographicPage from './pages/GeographicPage';
-import PendencyPage from './pages/PendencyPage';
 import RawDataPage from './pages/RawDataPage';
 import EcomWallahPage from './pages/EcomWallahPage';
 import CouponsPage from './pages/CouponsPage';
 import ComponentSummaryPage from './pages/ComponentSummaryPage';
-import ActionsPage from './pages/ActionsPage';
 import ChatWidget from './components/ChatWidget';
 import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, sameSet } from './utils/dataEngine';
 
@@ -34,17 +31,16 @@ const DEFAULT_FILTERS = {
 };
 
 const PAGE_LABELS = {
-  ecomwallah:'🤖 EcomWallah', overview:'📊 Overview', revenue:'💰 Revenue', fulfilment:'🚚 Fulfilment',
+  ecomwallah:'🤖 EcomWallah', overview:'📊 Overview', revenue:'💰 Revenue',
   channels:'📡 Channels', products:'📚 Products', coupons:'🎟️ Coupons',
   skusummary:'🧾 SKU Level Summary', components:'🧩 Component Level Summary',
-  geographic:'🗺️ Geographic', pendency:'⏳ Pendency',
-  actions:'🎯 Action Center', rawdata:'📋 Raw Data',
+  geographic:'🗺️ Geographic',
+  rawdata:'📋 Raw Data',
 };
 
 const PAGE_EYEBROW = {
   ecomwallah:'AI ASSISTANT', overview:'EXECUTIVE SUMMARY', revenue:'REVENUE & DISCOUNTS',
-  channels:'CHANNELS & PAYMENTS', geographic:'STATES & CITIES', fulfilment:'DELIVERY & RTO',
-  pendency:'OPEN ORDERS', actions:'WHAT TO DO NEXT',
+  channels:'CHANNELS & PAYMENTS', geographic:'STATES & CITIES',
   products:'CATEGORY DRILL-DOWN', coupons:'PROMO PERFORMANCE', rawdata:'ORDER-LEVEL DATA',
   skusummary:'SKU-LEVEL SUMMARY', components:'BUNDLE COMPONENT BREAKDOWN',
 };
@@ -170,14 +166,11 @@ export default function App({ userEmail, onLogout }) {
     const p = { data: bundle, filters, goto: setPage, drillTo };
     switch(page) {
       case 'revenue':    return <RevenuePage    {...p}/>;
-      case 'fulfilment': return <FulfilmentPage {...p}/>;
       case 'channels':   return <ChannelsPage   {...p}/>;
       case 'products':   return <ProductsPage   {...p}/>;
       case 'skusummary': return <SKUPage        {...p}/>;
       case 'components': return <ComponentSummaryPage {...p}/>;
       case 'geographic': return <GeographicPage {...p}/>;
-      case 'pendency':   return <PendencyPage   {...p}/>;
-      case 'actions':    return <ActionsPage    {...p}/>;
       case 'coupons':    return <CouponsPage    {...p}/>;
       case 'ecomwallah': return <EcomWallahPage {...p}/>;
       case 'rawdata':    return <RawDataPage    {...p}/>;
