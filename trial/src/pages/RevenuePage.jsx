@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, BarChart, Bar, ComposedChart, Line, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from 'recharts';
 import { KPI, KPIGrid, Card, DataTable, SectionLabel, InsightBar } from '../components/UI';
-import { metrics, groupArr, groupByDate, fmt, fmtN, fmtCr, pct, COLORS } from '../utils/dataEngine';
+import { metrics, groupArr, groupByDate, fmt, fmtN, fmtCr, pct, COLORS, full, fullMoney } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -55,10 +55,10 @@ export default function RevenuePage({ data }) {
         byChan[0] && { icon:'📡', value:byChan[0].name, label:'top channel' },
       ]}/>
       <KPIGrid cols={4}>
-        <KPI icon="💰" label="Gross Revenue"    value={fmtCr(m.rev)}        sub={`AOV ${fmt(m.aov)}`}  color="#16a34a" trend={wowRev}/>
-        <KPI icon="🚚" label="Shipping Charges" value={fmtCr(m.delCharges)} sub="Collected"            color="#7c3aed"/>
-        <KPI icon="₹" label="ASP / Unit"       value={fmt(m.asp)}        sub="Avg selling price"    color="#2563eb"/>
-        <KPI icon="🛒" label="AOV"              value={fmt(m.aov)}        sub="Avg order value"      color="#0891b2"/>
+        <KPI icon="💰" label="Gross Revenue"    value={fmtCr(m.rev)}        sub={`AOV ${fmt(m.aov)}`}  color="#16a34a" trend={wowRev} exact={fullMoney(m.rev)}/>
+        <KPI icon="🚚" label="Shipping Charges" value={fmtCr(m.delCharges)} sub="Collected"            color="#7c3aed" exact={fullMoney(m.delCharges)}/>
+        <KPI icon="₹" label="ASP / Unit"       value={fmt(m.asp)}        sub="Avg selling price"    color="#2563eb" exact={fullMoney(m.asp)}/>
+        <KPI icon="🛒" label="AOV"              value={fmt(m.aov)}        sub="Avg order value"      color="#0891b2" exact={fullMoney(m.aov)}/>
       </KPIGrid>
 
       <Card title="Revenue Trend" height={230}
