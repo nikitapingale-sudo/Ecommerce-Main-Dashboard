@@ -91,7 +91,7 @@ export default function FulfilmentPage({ data, filters }) {
         <Card title="WoW Orders" height={220}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weekly.slice(-12)} margin={{ top:4, right:8, bottom:0, left:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={30}/>
               <Tooltip content={<TT/>}/>
@@ -127,7 +127,7 @@ export default function FulfilmentPage({ data, filters }) {
         <Card title="Monthly Orders" height={220}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={monthly} margin={{ top:4, right:8, bottom:0, left:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={30}/>
               <Tooltip content={<TT/>}/>

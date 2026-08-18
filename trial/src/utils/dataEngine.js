@@ -447,16 +447,34 @@ export function downloadExcel(rows, name) {
   });
 }
 
+// Order-status groups carry good/bad meaning, so the terminal states wear the
+// reserved status tokens and the in-flight states step down the ordinal ramp.
+// Always rendered with the status name beside the swatch — never colour alone.
 export const STATUS_COLOR = {
-  Delivered: '#059669', Shipped: '#2563eb', Packed: '#7c3aed',
-  Received: '#d97706', Cancelled: '#dc2626', 'Return/Refund': '#ea580c',
-  'RTO/Lost': '#db2777', Others: '#9ca3af',
+  Delivered: 'var(--st-good)', Shipped: 'var(--ord-2)', Packed: 'var(--ord-3)',
+  Received: 'var(--ord-1)', Cancelled: 'var(--st-critical)',
+  'Return/Refund': 'var(--st-serious)', 'RTO/Lost': 'var(--st-warning)',
+  Closed: 'var(--ord-4)', Others: 'var(--text3)',
 };
 export const ITEM_STATUS_COLOR = {
-  Delivered: '#00c48c', Shipped: '#3d9cf0', Packed: '#a855f7',
-  Allocated: '#00d4d4', Confirmed: '#8b85ff', Pending: '#ffc542',
-  'Return/Refund': '#ff8c42', 'RTO/Lost': '#ff6b9d', Cancelled: '#ff4d6d',
-  Closed: '#94a3b8',   // own lifecycle state — not a cancellation
-  Others: '#5a6080',
+  Delivered: 'var(--st-good)', Shipped: 'var(--ord-2)', Packed: 'var(--ord-3)',
+  Allocated: 'var(--ord-1)', Confirmed: 'var(--series-7)', Pending: 'var(--series-4)',
+  'Return/Refund': 'var(--st-serious)', 'RTO/Lost': 'var(--st-warning)',
+  Cancelled: 'var(--st-critical)',
+  Closed: 'var(--ord-4)',   // own lifecycle state — not a cancellation
+  Others: 'var(--text3)',
 };
-export const COLORS = ['#4f46e5','#059669','#2563eb','#d97706','#dc2626','#ea580c','#7c3aed','#0891b2','#db2777','#65a30d','#f43f5e','#0e7490'];
+// Categorical series colours, in FIXED assignment order (see index.css for the
+// token definitions and why the old 12-colour list was replaced). Eight is the
+// ceiling — beyond it, fold the tail into "Other" rather than inventing a hue.
+export const COLORS = [
+  'var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)',
+  'var(--series-5)', 'var(--series-6)', 'var(--series-7)', 'var(--series-8)',
+];
+// Ordered magnitude (funnel stages, tiers) — one hue, light→dark.
+export const ORDINAL = ['var(--ord-1)','var(--ord-2)','var(--ord-3)','var(--ord-4)','var(--ord-5)'];
+// Reserved for good/bad meaning; always paired with an icon + label.
+export const STATUS = {
+  good: 'var(--st-good)', warning: 'var(--st-warning)',
+  serious: 'var(--st-serious)', critical: 'var(--st-critical)',
+};

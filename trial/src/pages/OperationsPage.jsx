@@ -50,7 +50,7 @@ export default function OperationsPage({ data }) {
         <Card title="Warehouse Order Distribution" height={200}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={byWH} layout="vertical" margin={{ left:4, right:40, top:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
+              <CartesianGrid stroke="var(--grid)" horizontal={false}/>
               <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
               <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={100} tickLine={false} axisLine={false}/>
               <Tooltip content={<TT/>}/>
@@ -63,7 +63,7 @@ export default function OperationsPage({ data }) {
         <Card title="Order Type Distribution" height={200}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={byOT} margin={{ top:4, right:8, bottom:0, left:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="name" tick={{ fill:'var(--text3)', fontSize:11 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={30}/>
               <Tooltip content={<TT/>}/>

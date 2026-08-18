@@ -12,6 +12,24 @@
   --yellow:#d97706; --yellow-bg:#fef3c7;
   --blue:#2563eb;  --blue-bg:#dbeafe;
   --orange:#ea580c; --cyan:#0891b2; --purple:#7c3aed; --pink:#db2777;
+
+  /* ── Chart palette ──────────────────────────────────────────────────────
+     Categorical slots are assigned in FIXED ORDER and never cycled past 8 —
+     a generated 9th hue is indistinguishable from an existing one under
+     colour-vision deficiency. The previous 12-colour list failed validation
+     on three counts, including #ea580c vs #dc2626 at ΔE 8.7 for NORMAL
+     vision (below the 15 floor) — two of its reds were hard to tell apart
+     for everyone. These eight pass lightness band, chroma floor, CVD
+     separation, normal-vision floor and contrast. */
+  --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
+  --series-5:#e87ba4; --series-6:#008300; --series-7:#4a3aa7; --series-8:#e34948;
+  /* Ordinal ramp — ONE hue, light→dark, for ordered magnitude (funnel stages,
+     tiers). Never use this on nominal categories: it would double-encode bar
+     length as hue. */
+  --ord-1:#6da7ec; --ord-2:#3987e5; --ord-3:#256abf; --ord-4:#184f95; --ord-5:#0d366b;
+  /* Status — reserved for good/bad MEANING, never for "series 4", and always
+     shipped with an icon + label so the colour is not carrying it alone. */
+  --st-good:#0ca30c; --st-warning:#fab219; --st-serious:#ec835a; --st-critical:#d03b3b;
   --font:'Inter',sans-serif; --serif:'Georgia','Times New Roman',serif; --r:10px; --r2:16px;
   --shadow:0 1px 2px rgba(16,24,40,.04), 0 2px 8px rgba(16,24,40,.05);
   --shadow2:0 12px 34px rgba(16,24,40,.14);
@@ -30,6 +48,12 @@
   --blue:#60a5fa;  --blue-bg:#10243f;
   --shadow:0 1px 2px rgba(0,0,0,.4);
   --shadow2:0 10px 30px rgba(0,0,0,.55);
+  /* Dark is SELECTED, not an automatic flip: its own steps from the same
+     ramps, validated against the dark surface (#111c33). */
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500;
+  --series-5:#d55181; --series-6:#008300; --series-7:#9085e9; --series-8:#e66767;
+  /* Ordinal inverts on a dark surface — the light end must clear the ground. */
+  --ord-1:#cde2fb; --ord-2:#9ec5f4; --ord-3:#6da7ec; --ord-4:#3987e5; --ord-5:#256abf;
 }
 
 /* ── Warm theme (editorial cream + rust — the signature look) ── */

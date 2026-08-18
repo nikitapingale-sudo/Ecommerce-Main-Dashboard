@@ -78,7 +78,7 @@ export default function ProductsPage({ data }) {
         <Card title={`${level} — Revenue`} subtitle="Click bar to drill" height={240}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={cur.slice(0,12)} onClick={handleClick} style={{ cursor:'pointer' }} margin={{ top:4, right:8, bottom:30, left:8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="name" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false} angle={-35} textAnchor="end"/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={90} tickFormatter={fmtCr}/>
               <Tooltip content={<TT/>}/>
@@ -91,7 +91,7 @@ export default function ProductsPage({ data }) {
         <Card title={`${level} — Orders`} subtitle="Click bar to drill" height={240}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={cur.slice(0,12)} onClick={handleClick} style={{ cursor:'pointer' }} margin={{ top:4, right:8, bottom:30, left:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="name" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false} angle={-35} textAnchor="end"/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={30}/>
               <Tooltip content={<TT/>}/>

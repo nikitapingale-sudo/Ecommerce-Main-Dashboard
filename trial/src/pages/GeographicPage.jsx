@@ -106,7 +106,7 @@ export default function GeographicPage({ data }) {
         <Card title="Revenue Share — Top 10 States" height={240}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stateNorm.slice().sort((a,b)=>b.revenue-a.revenue).slice(0,10)} layout="vertical" margin={{ left:4, right:55, top:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
+              <CartesianGrid stroke="var(--grid)" horizontal={false}/>
               <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={fmtCr}/>
               <YAxis type="category" dataKey="name" tick={{ fill:'var(--text2)', fontSize:10 }} width={100} tickLine={false} axisLine={false}/>
               <Tooltip content={<TT/>}/>

@@ -72,7 +72,7 @@ export default function RevenuePage({ data }) {
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={trend} margin={{ top:4, right:8, bottom:0, left:8 }}>
             <defs><linearGradient id="revg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#059669" stopOpacity={0.2}/><stop offset="95%" stopColor="#059669" stopOpacity={0}/></linearGradient></defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+            <CartesianGrid stroke="var(--grid)" vertical={false}/>
             <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
             <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={90} tickFormatter={fmtCr}/>
             <Tooltip content={<TT/>}/>
@@ -85,7 +85,7 @@ export default function RevenuePage({ data }) {
         <Card title="Day-on-Day Orders (% change)" height={200}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={dodData.slice(-30)} margin={{ top:4, right:35, bottom:0, left:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false}/>
               <YAxis yAxisId="l" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={30}/>
               <YAxis yAxisId="r" orientation="right" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={v=>`${v.toFixed(0)}%`} width={35}/>
@@ -99,7 +99,7 @@ export default function RevenuePage({ data }) {
         <Card title="Day-on-Day Revenue (% change)" height={200}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={dodData.slice(-30)} margin={{ top:4, right:35, bottom:0, left:8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false}/>
               <YAxis yAxisId="l" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={90} tickFormatter={fmtCr}/>
               <YAxis yAxisId="r" orientation="right" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={v=>`${v.toFixed(0)}%`} width={35}/>
@@ -116,7 +116,7 @@ export default function RevenuePage({ data }) {
         <Card title="Monthly Revenue" height={190}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={monthly} margin={{ top:4, right:8, bottom:0, left:8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" vertical={false}/>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={90} tickFormatter={fmtCr}/>
               <Tooltip content={<TT/>}/>

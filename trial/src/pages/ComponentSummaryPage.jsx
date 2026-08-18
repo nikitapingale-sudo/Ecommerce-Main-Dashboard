@@ -78,7 +78,7 @@ export default function ComponentSummaryPage({ data, filters }) {
       <Card title="🧩 Top Components by Sales" subtitle="Bundle revenue split across components by MRP ratio" height={300}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={top} layout="vertical" margin={{ left:4, right:60, top:0, bottom:0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false}/>
+            <CartesianGrid stroke="var(--grid)" horizontal={false}/>
             <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={fmtCr}/>
             <YAxis type="category" dataKey="short" tick={{ fill:'var(--text2)', fontSize:10 }} width={170} tickLine={false} axisLine={false}/>
             <Tooltip content={<TT/>}/>
