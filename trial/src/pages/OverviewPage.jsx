@@ -23,6 +23,13 @@ const kmt = (n) => {
 };
 /* Axis dates as "1-Aug" / "Aug-26" rather than the raw ISO string, which is
    both long and hard to scan. Handles day (YYYY-MM-DD) and month (YYYY-MM). */
+// The Trend chart scrolls horizontally so no period is skipped. Width per point
+// varies by granularity — a day label ("18-Aug") needs less room than a month
+// one, and 140 days cannot share a card width without dropping labels.
+const PX_PER_POINT = { day: 34, week: 58, month: 90 };
+const AXIS_W = 46;     // gutter for the pinned y-axis
+const PLOT_X_H = 26;   // x-axis band height, identical in both layers so the
+                       // pinned axis lines up with the scrolling plot
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function shortDate(v) {
   if (typeof v !== 'string') return v;
@@ -528,6 +535,25 @@ ${fullMoney(m.delCharges)}`}/>
               ))}
             </div>
           }>
+          {/* Horizontal scroll so EVERY period gets a label. 140 days cannot
+              share a card width without dropping labels, so the plot is given
+              the width it needs and the card scrolls. The y-axis is drawn again
+              in a pinned layer on the left — otherwise it scrolls out of view
+              and the values become unreadable as soon as you move right. */}
+          <div style={{ position:'relative', height:'100%' }}>
+            <div style={{ position:'absolute', left:0, top:0, bottom:0, width:AXIS_W, zIndex:2,
+                          background:'var(--surface)', pointerEvents:'none' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend} margin={{ top:4, right:0, bottom:0, left:0 }}>
+                  <YAxis tick={{ fill:'var(--text3)', fontSize:9.5 }} tickLine={false} axisLine={false} width={AXIS_W}/>
+                  <XAxis dataKey="date" tick={false} axisLine={false} tickLine={false} height={PLOT_X_H}/>
+                  <Area dataKey="orders" stroke="none" fill="none"/>
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ height:'100%', overflowX:'auto', overflowY:'hidden' }}>
+              <div style={{ height:'100%', minWidth:'100%',
+                            width: trend.length * (PX_PER_POINT[gran] || 34) + AXIS_W }}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={trend} margin={{ top:4, right:8, bottom:0, left:0 }}>
               <defs>
@@ -541,15 +567,20 @@ ${fullMoney(m.delCharges)}`}/>
               <CartesianGrid stroke="var(--grid)" vertical={false}/>
               {/* Day granularity packs ~140 labels onto the axis; small type
                   plus a computed interval keeps them from colliding. */}
+              {/* interval={0} = every label drawn, none skipped. The scroll
+                  container above supplies the width that makes that legible. */}
               <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false}
-                     minTickGap={16} interval="preserveStartEnd" tickFormatter={shortDate}/>
-              <YAxis tick={{ fill:'var(--text3)', fontSize:9.5 }} tickLine={false} axisLine={false} width={35}/>
+                     interval={0} tickFormatter={shortDate} height={PLOT_X_H}/>
+              <YAxis tick={false} axisLine={false} tickLine={false} width={AXIS_W}/>
               <Tooltip content={<TT/>}/>
               <Legend wrapperStyle={{ fontSize:11, paddingTop:6 }} iconType="plainline"/>
               <Area type="monotone" dataKey="orders" name="Orders" stroke="var(--series-1)" strokeWidth={2} fill="url(#ga)" dot={false}/>
               <Area type="monotone" dataKey="qty"    name="Qty"    stroke="var(--series-3)" strokeWidth={2} fill="url(#gb)" dot={false}/>
             </AreaChart>
           </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
         </Card>
 
       </div>
