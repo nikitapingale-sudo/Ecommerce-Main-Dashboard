@@ -75,20 +75,6 @@ export default function ComponentSummaryPage({ data, filters }) {
         <KPI icon="🏷️" label="Blended ASP"     value={fmt(totals.asp)}                           sub="sales ÷ units" color="#d97706"/>
       </KPIGrid>
 
-      <Card title="🧩 Top Components by Sales" subtitle="Bundle revenue split across components by MRP ratio" height={300}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={top} layout="vertical" margin={{ left:4, right:60, top:0, bottom:0 }}>
-            <CartesianGrid stroke="var(--grid)" horizontal={false}/>
-            <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={fmtCr}/>
-            <YAxis type="category" dataKey="short" tick={{ fill:'var(--text2)', fontSize:10 }} width={170} tickLine={false} axisLine={false}/>
-            <Tooltip content={<TT/>}/>
-            <Bar dataKey="sales_component" name="Sales" radius={[0,3,3,0]}>
-              {top.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]}/>)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
-
       <DataTable
         title="Component-Level Summary"
         data={rows}
@@ -117,6 +103,21 @@ export default function ComponentSummaryPage({ data, filters }) {
         filename="component_summary"
         maxH={620}
       />
+
+      {/* Chart last — the table is the page's primary content. */}
+      <Card title="🧩 Top Components by Sales" subtitle="Bundle revenue split across components by MRP ratio" height={300}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={top} layout="vertical" margin={{ left:4, right:60, top:0, bottom:0 }}>
+            <CartesianGrid stroke="var(--grid)" horizontal={false}/>
+            <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={fmtCr}/>
+            <YAxis type="category" dataKey="short" tick={{ fill:'var(--text2)', fontSize:10 }} width={170} tickLine={false} axisLine={false}/>
+            <Tooltip content={<TT/>}/>
+            <Bar dataKey="sales_component" name="Sales" radius={[0,3,3,0]}>
+              {top.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]}/>)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
     </div>
   );
 }

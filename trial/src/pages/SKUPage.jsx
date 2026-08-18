@@ -2,12 +2,9 @@ import React, { useMemo } from 'react';
 import { DataTable, SectionLabel, InsightBar, MoversCard, KPI, KPIGrid } from '../components/UI';
 import { metrics, fmt, fmtCr, fmtN, pct, COLORS, downloadSummaryCsv } from '../utils/dataEngine';
 
-/* Counts in K, never M — matches the Overview formatting. */
-const kmt = (n) => {
-  n = Number(n) || 0;
-  if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + 'K';
-  return Math.round(n).toLocaleString('en-IN');
-};
+/* Plain grouped integer — counts on this page are read as exact figures,
+   so they are not abbreviated to K. */
+const num = (n) => Math.round(Number(n) || 0).toLocaleString('en-IN');
 
 export default function SKUPage({ data, filters }) {
   // Top SKUs come pre-aggregated from the server (sorted by revenue).
@@ -18,6 +15,7 @@ export default function SKUPage({ data, filters }) {
   // current filter — not from skuData, which is only the top slice the table
   // renders. Summing the visible rows would understate every card.
   const m = useMemo(() => metrics(data), [data]);
+  const skuTotal = (data && data.meta && data.meta.skuTotal) || skuData.length;
 
   // Pareto: top-10 share + how many SKUs make up 80% of revenue.
   const pareto = useMemo(() => {
@@ -37,28 +35,33 @@ export default function SKUPage({ data, filters }) {
       ]}/>
 
       <KPIGrid cols={4}>
-        <KPI icon="🗂️" label="Orders"        value={kmt(m.orders)}
-             sub={`${kmt(m.lines)} line items`}                         color="var(--series-1)"/>
+        {/* Counts in full, not abbreviated — these are read as exact figures. */}
+        <KPI icon="🗂️" label="Orders"        value={num(m.orders)}
+             sub={`${num(m.lines)} line items`}                         color="var(--series-1)"/>
+        {/* One revenue card. Gross is the headline because it is what the
+            Revenue column in the table below sums to; the realised figure
+            rides along as the sub-line rather than a second card. */}
         <KPI icon="💰" label="Revenue"       value={fmtCr(m.rev)}
-             sub="gross, before deductions"                             color="var(--series-3)"/>
-        <KPI icon="✅" label="Final Revenue" value={fmtCr(m.netRevenue)}
-             sub={`${pct(m.netRevPct)} of gross`}                       color="var(--st-good)"/>
-        <KPI icon="📦" label="Qty"           value={kmt(m.qty)}
+             sub={`final ${fmtCr(m.netRevenue)} · ${pct(m.netRevPct)} of gross`}
+             color="var(--series-3)"/>
+        <KPI icon="📦" label="Qty"           value={num(m.qty)}
              sub={`${(m.aul || 0).toFixed(1)} units / order`}           color="var(--series-7)"/>
+        {/* Count comes from the server and covers every matching row; skuData
+            is only the top slice the table renders, so its length is just the
+            cap. */}
+        <KPI icon="🔖" label="Distinct SKUs" value={num(skuTotal)}
+             sub={skuData.length < skuTotal ? `top ${num(skuData.length)} listed below` : 'all listed below'}
+             color="var(--series-5)"/>
       </KPIGrid>
 
-      <KPIGrid cols={4}>
+      <KPIGrid cols={3}>
         <KPI icon="🏷️" label="ASP"           value={fmt(m.asp)}
              sub="revenue ÷ qty"                                        color="var(--series-2)"/>
         <KPI icon="🧾" label="AOV"           value={fmt(m.aov)}
              sub="revenue ÷ orders"                                     color="var(--series-4)"/>
-        <KPI icon="🔖" label="Distinct SKUs" value={kmt(skuData.length)}
-             sub="listed in the table below"                            color="var(--series-5)"/>
         <KPI icon="📉" label="Discount"      value={pct(m.discPct)}
              sub={`${fmtCr(m.discount)} off MRP`}                       color="var(--st-serious)"/>
       </KPIGrid>
-
-      <MoversCard title="🚀 Top Movers — SKUs" movers={data.movers && data.movers.sku}/>
 
       <DataTable
         title="SKU-Level Performance"
@@ -92,6 +95,10 @@ export default function SKUPage({ data, filters }) {
         filename="sku_performance"
         maxH={620}
       />
+
+      {/* Movers last — a closing note under the table rather than something
+          that pushes the table itself below the fold. */}
+      <MoversCard title="🚀 Top Movers — SKUs" movers={data.movers && data.movers.sku}/>
     </div>
   );
 }

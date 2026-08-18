@@ -475,7 +475,12 @@ class Dataset:
               for k, col in DIM_COLS.items()}
         return {
             "meta": {"filteredRows": int(len(df)), "totalRows": self.n,
-                     "minDate": self.min_date, "maxDate": self.max_date},
+                     "minDate": self.min_date, "maxDate": self.max_date,
+                     # Distinct SKUs across ALL matching rows. sku_table() only
+                     # returns the top slice the table renders, so counting that
+                     # list would just report the cap (500) as if it were the
+                     # real number.
+                     "skuTotal": int(df["product_variant_id"].nunique()) if len(df) else 0},
             # Full value lists for the filter dropdowns — see filter_options().
             "options": self.filter_options(),
             "metrics": self.metrics(df),
