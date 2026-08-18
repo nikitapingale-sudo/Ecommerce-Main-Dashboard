@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { X, Plus, Minus } from 'lucide-react';
-import { Card, StatList, InsightBar, DataTable } from '../components/UI';
+import { Card, StatList, InsightBar } from '../components/UI';
 import { metrics, groupArr, groupByDate, fmt, fmtCr, pct, full, fullMoney, STATUS_COLOR, COLORS, ORDINAL, FILTER_OPTIONS } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
@@ -391,31 +391,6 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
   const byPay   = useMemo(() => groupArr(data, 'payment_sources'), [data]);
   // Server sends this only when a B2B channel is in the filter.
   const custRows = useMemo(() => (data && data.customers) || [], [data]);
-
-  // Product material type — sourced from the live sheet (bundles inherit their
-  // largest component's type). revShare is recomputed here so it is the share
-  // of what is on screen, not of some wider set.
-  const matRows = useMemo(() => {
-    const rows = groupArr(data, 'material_type') || [];
-    const tot = rows.reduce((a, r) => a + (r.revenue || 0), 0) || 1;
-    return rows
-      .map(r => ({ ...r, revSharePct: (r.revenue || 0) / tot * 100 }))
-      .sort((a, b) => b.revenue - a.revenue);
-  }, [data]);
-
-  // Totals row. Revenue and qty are additive and reconcile exactly with the
-  // KPI cards. Orders do NOT: one order can contain lines of several material
-  // types, so summing the column double-counts it (765,579 against 722,688
-  // distinct). The total therefore shows the DISTINCT order count from the
-  // server metrics — the true figure — which is deliberately not the sum of the
-  // column above it. The card title says so.
-  const matTotal = useMemo(() => {
-    if (!matRows.length) return null;
-    const sum = (k) => matRows.reduce((a, r) => a + (r[k] || 0), 0);
-    const qty = sum('qty'), revenue = sum('revenue');
-    return { name: 'Total', orders: m.orders, qty, revenue,
-             revSharePct: 100, asp: qty > 0 ? revenue / qty : 0 };
-  }, [matRows, m]);
   // Segment breakdown (orders/lines/qty/revenue per 1P/3P/B2B) — for the funnels.
   const bySeg = useMemo(() => ((data.by && data.by.purchaseLevel) || []).filter(r => ['1P', '3P', 'B2B'].includes(r.name)), [data]);
   const segRows = (measure) => bySeg.map(r => ({ name: r.name, value: r[measure] || 0, color: SEG_COLORS[r.name] }));
@@ -622,28 +597,6 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
           ]}
           filename="b2b_customers"
           maxH={520}
-        />
-      )}
-
-      {/* ── Product material type: qty, revenue and revenue share.
-             revShare is recomputed over these rows so the column sums to 100%
-             of what is shown, rather than of a wider set. ── */}
-      {matRows.length > 0 && (
-        <DataTable
-          title="🧱 Product Material Type — from the live sheet · total orders are distinct, not the column sum"
-          data={matRows}
-          searchable={false}
-          columns={[
-            { key:'name',        label:'Material Type', bold:true, w:240 },
-            { key:'orders',      label:'Orders',   right:true, render:v=>(v||0).toLocaleString('en-IN') },
-            { key:'qty',         label:'Qty',      right:true, render:v=>Math.round(v||0).toLocaleString('en-IN') },
-            { key:'revenue',     label:'Revenue',  right:true, render:v=>fmt(v) },
-            { key:'revSharePct', label:'Revenue %',right:true, render:v=>`${(v||0).toFixed(1)}%` },
-            { key:'asp',         label:'ASP',      right:true, render:v=>fmt(v) },
-          ]}
-          footer={matTotal}
-          filename="material_type_summary"
-          maxH={420}
         />
       )}
 

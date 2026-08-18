@@ -668,6 +668,26 @@ def component_summary(filters, limit=2000):
         a["saleSharePct"] = round(a["sales_component"] / total_sales * 100, 2)
     rows.sort(key=lambda r: -r["sales_component"])
 
+    # Material-type roll-up across ALL components, computed BEFORE the display
+    # cap for the same reason the totals are: summing only the listed 2,000
+    # would understate every line.
+    mat = {}
+    for r in rows:
+        k = r.get("study_material_type") or "Unknown"
+        a = mat.get(k)
+        if a is None:
+            a = mat[k] = {"name": k, "qty": 0.0, "revenue": 0.0, "components": 0}
+        a["qty"] += r["qty_component"]
+        a["revenue"] += r["sales_component"]
+        a["components"] += 1
+    mat_total = sum(a["revenue"] for a in mat.values()) or 1.0
+    material_types = sorted(mat.values(), key=lambda a: -a["revenue"])
+    for a in material_types:
+        a["qty"] = round(a["qty"], 2)
+        a["revenue"] = round(a["revenue"], 2)
+        a["revSharePct"] = round(a["revenue"] / mat_total * 100, 2)
+        a["asp"] = round(a["revenue"] / a["qty"], 2) if a["qty"] else 0.0
+
     # Totals across ALL components, computed BEFORE the display cap. The page
     # shows the top `limit` rows; summing only those understated component sales
     # by the whole tail (1,040 components / ~Rs 0.45 Cr at the time of writing),
@@ -683,7 +703,7 @@ def component_summary(filters, limit=2000):
     if limit:
         rows = rows[:limit]
 
-    out = {"rows": rows, "totals": totals}
+    out = {"rows": rows, "totals": totals, "materialTypes": material_types}
     with _cache_lock:
         _component_cache[key] = (_now() + API_CACHE_TTL, out)
     return out
@@ -1439,6 +1459,7 @@ class Handler(BaseHTTPRequestHandler):
             # table renders. The page must headline the former.
             body = json.dumps({"components": rows,
                                "totals": totals,
+                               "materialTypes": res.get("materialTypes", []),
                                "meta": {"count": len(rows), "total": totals["components"]}},
                               ensure_ascii=False, default=str).encode("utf-8")
             dbm.log(f"components -> {len(rows)}/{totals['components']} components in {_now()-t0:.2f}s")

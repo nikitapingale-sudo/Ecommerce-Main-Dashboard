@@ -14,6 +14,7 @@ const TT = ({ active, payload, label }) => {
 export default function ComponentSummaryPage({ data, filters }) {
   const [rows, setRows] = useState([]);
   const [srvTotals, setSrvTotals] = useState(null);
+  const [matTypes, setMatTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const reqId = useRef(0);
@@ -27,6 +28,7 @@ export default function ComponentSummaryPage({ data, filters }) {
         if (my !== reqId.current) return;
         setRows(res.components || []);
         setSrvTotals(res.totals || null);
+        setMatTypes(res.materialTypes || []);
         setLoading(false);
       })
       .catch(err => { if (my === reqId.current) { setError(err.message || String(err)); setLoading(false); } });
@@ -45,6 +47,16 @@ export default function ComponentSummaryPage({ data, filters }) {
     const qty = rows.reduce((s, r) => s + (r.qty_component || 0), 0);
     return { sales, qty, count: rows.length, asp: qty ? sales / qty : 0, shown: rows.length };
   }, [rows, srvTotals]);
+
+  // Totals for the material-type table. Every column here is additive — qty
+  // and revenue are component-level sums — so unlike the order-level version
+  // this total is simply the column sum and reconciles with the KPI cards.
+  const matTotal = useMemo(() => {
+    if (!matTypes.length) return null;
+    const qty = matTypes.reduce((a, r) => a + (r.qty || 0), 0);
+    const revenue = matTypes.reduce((a, r) => a + (r.revenue || 0), 0);
+    return { name: 'Total', qty, revenue, revSharePct: 100, asp: qty > 0 ? revenue / qty : 0 };
+  }, [matTypes]);
 
   const top = rows.slice(0, 12).map(r => ({ ...r, short: (r.title_component || r.component_sku_code || '').slice(0, 26) }));
 
@@ -75,6 +87,27 @@ export default function ComponentSummaryPage({ data, filters }) {
         <KPI icon="💰" label="Component Sales" value={fmtCr(totals.sales)}                       sub="all components · ties to SKU revenue" exact={fullMoney(totals.sales)} color="#16a34a"/>
         <KPI icon="🏷️" label="Blended ASP"     value={fmt(totals.asp)}                           sub="sales ÷ units" exact={fullMoney(totals.asp)} color="#d97706"/>
       </KPIGrid>
+
+      {/* Material type at COMPONENT level: qty and revenue after the bundle
+          split, rolled up server-side across every component (not just the
+          2,000 rendered below). Totals reconcile with the KPI cards. */}
+      {matTypes.length > 0 && (
+        <DataTable
+          title="🧱 Product Material Type — component qty & revenue"
+          data={matTypes}
+          searchable={false}
+          columns={[
+            { key:'name',        label:'Material Type', bold:true, w:240 },
+            { key:'qty',         label:'Qty',       right:true, render:v=>Math.round(v||0).toLocaleString('en-IN') },
+            { key:'revenue',     label:'Revenue',   right:true, render:v=>fmt(v) },
+            { key:'revSharePct', label:'Revenue %', right:true, render:v=>`${(v||0).toFixed(1)}%` },
+            { key:'asp',         label:'ASP',       right:true, render:v=>fmt(v) },
+          ]}
+          footer={matTotal}
+          filename="material_type_component_summary"
+          maxH={420}
+        />
+      )}
 
       <DataTable
         title="Component-Level Summary"
