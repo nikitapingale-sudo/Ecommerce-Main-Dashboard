@@ -25,27 +25,54 @@ const FROW = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(24
 // a rank-based colour would repaint the segments whenever the order changed.
 const SEG_COLORS = { '1P': 'var(--series-1)', '3P': 'var(--series-2)', 'B2B': 'var(--series-7)' };
 
-/* ── Tapered funnel box (the original segment look, restored on request).
-      Colored trapezoid layer + a non-clipped text overlay, so labels stay
-      readable even in the narrow segments. ──────────────────────────────── */
-function FunnelChart({ title, subtitle, rows, format }) {
+/* ── Tapered funnel box (the original segment look).
+      The three segment cards sit side by side and must line up, so the
+      geometry is FIXED rather than derived per card:
+        · every card declares the same `unit` sub-line (even when blank), so
+          one card carrying a unit does not push its funnel down relative to
+          the others — that was the visible misalignment;
+        · the widest band is always FUNNEL_TOP_W and the narrowest
+          FUNNEL_MIN_W, so all three taper across the same span whatever the
+          underlying spread;
+        · rows are a fixed height, so the cards end at the same baseline.
+      Colored trapezoid layer + a non-clipped text overlay keeps labels
+      readable even in the narrow bands. ─────────────────────────────────── */
+const FUNNEL_ROW_H = 52;
+const FUNNEL_TOP_W = 94;   // % width of the widest band
+const FUNNEL_MIN_W = 44;   // % width of the narrowest band (floor, so labels fit)
+const FUNNEL_TAIL  = 34;   // % width the last band tapers down to
+
+function FunnelChart({ title, unit = '', rows, format }) {
   const fmtV = format || kmt;
   const list = (rows || []).filter(r => r && (r.value || 0) > 0).sort((a, b) => (b.value || 0) - (a.value || 0));
-  const max = list.length ? (list[0].value || 1) : 1;
   const total = list.reduce((s, r) => s + (r.value || 0), 0) || 1;
-  const w = (v) => Math.max((v || 0) / max * 100, 42);   // floor so labels fit
+  const hi = list.length ? (list[0].value || 1) : 1;
+  const lo = list.length ? (list[list.length - 1].value || 0) : 0;
+  // Map [lo..hi] onto [FUNNEL_MIN_W..FUNNEL_TOP_W] so every card spans the
+  // same visual range; without this a card whose values are close together
+  // rendered as a near-rectangle beside one that tapered sharply.
+  const w = (v) => {
+    if (hi <= lo) return FUNNEL_TOP_W;
+    const t = ((v || 0) - lo) / (hi - lo);
+    return FUNNEL_MIN_W + t * (FUNNEL_TOP_W - FUNNEL_MIN_W);
+  };
   return (
-    <Card title={title} subtitle={subtitle} height="auto">
+    <Card title={title} height="auto">
+      {/* Always rendered, even when empty — this is what keeps the three
+          funnels on the same baseline. */}
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: -8, marginBottom: 8, minHeight: 15 }}>
+        {unit || ' '}
+      </div>
       {list.length === 0 ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>No data</div> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {list.map((r, i) => {
             const top = w(r.value);
-            const bot = w(i < list.length - 1 ? list[i + 1].value : (r.value || 0) * 0.74);
+            const bot = i < list.length - 1 ? w(list[i + 1].value) : FUNNEL_TAIL;
             const col = r.color || ORDINAL[Math.min(i, ORDINAL.length - 1)];
             const p = (r.value || 0) / total * 100;
             return (
               <div key={r.name} title={`${r.name}: ${fmtV(r.value || 0)} · ${p.toFixed(1)}%`}
-                   style={{ position: 'relative', height: 50 }}>
+                   style={{ position: 'relative', height: FUNNEL_ROW_H }}>
                 <div style={{ position: 'absolute', inset: 0, background: col,
                               clipPath: `polygon(${(100 - top) / 2}% 0, ${(100 + top) / 2}% 0, ${(100 + bot) / 2}% 100%, ${(100 - bot) / 2}% 100%)` }}/>
                 <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
@@ -454,10 +481,12 @@ export default function OverviewPage({ data, filters, goto }) {
         onPick={(s)=>setDrill({ label:s.drill, field:'orders', icon:(LIFECYCLE_TONE[s.name]||{}).icon || '•' })}/>
 
       {/* Segment splits — funnel boxes, as originally designed. */}
+      {/* All three declare a `unit` line (blank where there is none) so their
+          funnels start at the same y and end on the same baseline. */}
       <div style={FROW}>
-        <FunnelChart title="🗂️ Orders by Segment"  format={kmt}   rows={segRows('orders')}/>
-        <FunnelChart title="💰 Revenue by Segment" subtitle="Cr" format={fmtCr} rows={segRows('revenue')}/>
-        <FunnelChart title="📦 Qty by Segment"     format={kmt}   rows={segRows('qty')}/>
+        <FunnelChart title="🗂️ Orders by Segment"  unit="orders"      format={kmt}   rows={segRows('orders')}/>
+        <FunnelChart title="💰 Revenue by Segment" unit="₹ crore"      format={fmtCr} rows={segRows('revenue')}/>
+        <FunnelChart title="📦 Qty by Segment"     unit="units"        format={kmt}   rows={segRows('qty')}/>
       </div>
 
       {/* ── Orders by Channel raised above the DoD/WoW movement table. ── */}
