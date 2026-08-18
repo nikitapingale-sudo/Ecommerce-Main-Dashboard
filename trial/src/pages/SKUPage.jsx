@@ -1,11 +1,23 @@
 import React, { useMemo } from 'react';
-import { DataTable, SectionLabel, InsightBar, MoversCard } from '../components/UI';
-import { fmt, fmtN, pct, COLORS, downloadSummaryCsv } from '../utils/dataEngine';
+import { DataTable, SectionLabel, InsightBar, MoversCard, KPI, KPIGrid } from '../components/UI';
+import { metrics, fmt, fmtCr, fmtN, pct, COLORS, downloadSummaryCsv } from '../utils/dataEngine';
+
+/* Counts in K, never M — matches the Overview formatting. */
+const kmt = (n) => {
+  n = Number(n) || 0;
+  if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + 'K';
+  return Math.round(n).toLocaleString('en-IN');
+};
 
 export default function SKUPage({ data, filters }) {
   // Top SKUs come pre-aggregated from the server (sorted by revenue).
   // SKU identity = product_variant_id (SKU Code); vco_sku_code is the WMS code.
   const skuData = useMemo(() => (data && data.sku) || [], [data]);
+
+  // Headline figures come from the SERVER metrics, which cover EVERY row in the
+  // current filter — not from skuData, which is only the top slice the table
+  // renders. Summing the visible rows would understate every card.
+  const m = useMemo(() => metrics(data), [data]);
 
   // Pareto: top-10 share + how many SKUs make up 80% of revenue.
   const pareto = useMemo(() => {
@@ -23,6 +35,28 @@ export default function SKUPage({ data, filters }) {
         { icon:'🎯', value:`~${pareto.n80}`, label:'SKUs drive 80% of revenue' },
         skuData[0] && { icon:'🏷️', value:(skuData[0].product_variant_name || skuData[0].sku_code || '').slice(0,28), label:`top SKU · ${fmt(skuData[0].revenue)}` },
       ]}/>
+
+      <KPIGrid cols={4}>
+        <KPI icon="🗂️" label="Orders"        value={kmt(m.orders)}
+             sub={`${kmt(m.lines)} line items`}                         color="var(--series-1)"/>
+        <KPI icon="💰" label="Revenue"       value={fmtCr(m.rev)}
+             sub="gross, before deductions"                             color="var(--series-3)"/>
+        <KPI icon="✅" label="Final Revenue" value={fmtCr(m.netRevenue)}
+             sub={`${pct(m.netRevPct)} of gross`}                       color="var(--st-good)"/>
+        <KPI icon="📦" label="Qty"           value={kmt(m.qty)}
+             sub={`${(m.aul || 0).toFixed(1)} units / order`}           color="var(--series-7)"/>
+      </KPIGrid>
+
+      <KPIGrid cols={4}>
+        <KPI icon="🏷️" label="ASP"           value={fmt(m.asp)}
+             sub="revenue ÷ qty"                                        color="var(--series-2)"/>
+        <KPI icon="🧾" label="AOV"           value={fmt(m.aov)}
+             sub="revenue ÷ orders"                                     color="var(--series-4)"/>
+        <KPI icon="🔖" label="Distinct SKUs" value={kmt(skuData.length)}
+             sub="listed in the table below"                            color="var(--series-5)"/>
+        <KPI icon="📉" label="Discount"      value={pct(m.discPct)}
+             sub={`${fmtCr(m.discount)} off MRP`}                       color="var(--st-serious)"/>
+      </KPIGrid>
 
       <MoversCard title="🚀 Top Movers — SKUs" movers={data.movers && data.movers.sku}/>
 

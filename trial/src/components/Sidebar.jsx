@@ -18,13 +18,14 @@ const PAGE = {
   rawdata:    { emoji:'📋', label:'Raw Data' },
 };
 
-// Grouped, collapsible nav sections.
+// Grouped, collapsible nav sections. The two summaries sit directly under
+// Overview — they are the pages read straight after it, so they lead rather
+// than sitting near the bottom of the list.
 const GROUPS = [
   { title:'Assistant',        ids:['ecomwallah'] },
-  { title:'Analytics',        ids:['overview','revenue','channels','geographic'] },
+  { title:'Analytics',        ids:['overview','skusummary','components','revenue','channels','geographic'] },
   { title:'Operations',       ids:['fulfilment','pendency','operations','actions'] },
   { title:'Catalog & Supply', ids:['products','coupons'] },
-  { title:'Summaries',        ids:['skusummary','components'] },
   { title:'Data',             ids:['rawdata'] },
 ];
 
