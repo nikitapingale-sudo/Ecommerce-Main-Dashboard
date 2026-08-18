@@ -113,10 +113,15 @@ export function Sparkline({ data, color = '#4f46e5', width = 120, height = 26, f
 }
 
 /* ── KPI Card — compact tile: tinted icon + label + big number ────────────── */
-export function KPI({ label, value, sub, color = '#4f46e5', icon, onClick, trend, spark, sparkColor }) {
+// `exact` is the unrounded figure shown on hover — a card reading "Rs 105.61 Cr"
+// is unreadable when you need the actual number, so the title attribute
+// carries it in full.
+export function KPI({ label, value, sub, color = '#4f46e5', icon, onClick, trend, spark, sparkColor, exact }) {
   const [hov, setHov] = useState(false);
+  const tip = [label, exact != null ? String(exact) : String(value), sub].filter(Boolean).join('\n');
   return (
     <div
+      title={tip}
       onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}

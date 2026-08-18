@@ -148,8 +148,27 @@ export default function App({ userEmail, onLogout }) {
     ? lastUpdated.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:false })
     : '--:--';
 
+  // Click-to-drill: a page hands back a partial filter (e.g. { channels:['flipkart'] })
+  // and the whole dashboard narrows to it. Merged onto the current filters, so a
+  // channel click keeps the active date window and status exclusions rather than
+  // silently resetting them. Clicking the value that is already the sole
+  // selection clears it, so the same click toggles the drill off.
+  const drillTo = useCallback((patch) => {
+    if (!patch) return;
+    setFilters(f => {
+      const next = { ...f };
+      for (const [k, v] of Object.entries(patch)) {
+        const val = Array.isArray(v) ? v : [v];
+        const cur = Array.isArray(f[k]) ? f[k] : [];
+        const already = cur.length === val.length && val.every(x => cur.includes(x));
+        next[k] = already ? [] : val;
+      }
+      return next;
+    });
+  }, []);
+
   const renderPage = () => {
-    const p = { data: bundle, filters, goto: setPage };
+    const p = { data: bundle, filters, goto: setPage, drillTo };
     switch(page) {
       case 'revenue':    return <RevenuePage    {...p}/>;
       case 'fulfilment': return <FulfilmentPage {...p}/>;

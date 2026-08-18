@@ -468,6 +468,30 @@ class Dataset:
         out["couponSku"] = _records(cs)
         return out
 
+    # ── B2B customer breakdown ──
+    #  Only computed when the view is scoped to a B2B channel. B2B is the leg
+    #  where a named account is the unit of analysis; PW_Store is retail and the
+    #  3P feed carries no customer at all, so the table would be meaningless (and
+    #  a per-customer groupby over ~800k retail rows is not worth paying for on
+    #  every request).
+    B2B_CHANNELS = ("B2B_DC", "B2B_BOS")
+
+    def customer_table(self, df, limit=500):
+        if len(df) == 0 or "vco_customer_name" not in df.columns:
+            return []
+        g = df.groupby("vco_customer_name", observed=True).agg(
+            orders=("_oid", "nunique"), lines=("_lid", "nunique"),
+            qty=("qty", "sum"), revenue=("final_revenue", "sum"),
+        ).reset_index().rename(columns={"vco_customer_name": "customer"})
+        g = g[g["customer"].astype("string") != "Unknown"]
+        if len(g) == 0:
+            return []
+        total = float(g["revenue"].sum()) or 1.0
+        g["revShare"] = g["revenue"] / total * 100
+        g["asp"] = np.where(g["qty"] > 0, g["revenue"] / g["qty"], 0.0)
+        g["aov"] = np.where(g["orders"] > 0, g["revenue"] / g["orders"], 0.0)
+        return _records(g.sort_values("revenue", ascending=False).head(limit))
+
     # ── full bundle ──
     def summarize(self, filters):
         df = self._sub(filters)
@@ -488,6 +512,11 @@ class Dataset:
             "date": {g: self.by_date(df, g) for g in ("day", "week", "month")},
             "hierarchy": self.hierarchy(df),
             "sku": self.sku_table(df),
+            # Present only when the view is scoped to B2B; empty otherwise, and
+            # the page hides the card when it is empty.
+            "customers": (self.customer_table(df)
+                          if any(c in self.B2B_CHANNELS for c in (filters or {}).get("channels") or [])
+                          else []),
             "pendency": self.pendency(df),
             "movers": {
                 "category": self.movers(df, "parent_name"),

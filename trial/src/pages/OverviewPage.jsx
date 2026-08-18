@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { X, Plus, Minus } from 'lucide-react';
-import { Card, StatList, MoversCard, InsightBar } from '../components/UI';
-import { metrics, groupArr, groupByDate, fmt, fmtCr, pct, STATUS_COLOR, COLORS, ORDINAL, FILTER_OPTIONS } from '../utils/dataEngine';
+import { Card, StatList, InsightBar, DataTable } from '../components/UI';
+import { metrics, groupArr, groupByDate, fmt, fmtCr, pct, full, fullMoney, STATUS_COLOR, COLORS, ORDINAL, FILTER_OPTIONS } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -96,7 +96,7 @@ function FunnelChart({ title, unit = '', rows, format }) {
       The swatch colour is keyed to the entity's position in the FULL option
       list, not to its rank in this view — filtering to fewer channels must
       not repaint the survivors. ────────────────────────────────────────── */
-function RankedBars({ items, format, colorKey }) {
+function RankedBars({ items, format, colorKey, onPick, active }) {
   const fmtV = format || ((v) => (v || 0).toLocaleString('en-IN'));
   const list = (items || []).filter(r => (r.value || 0) > 0).sort((a, b) => b.value - a.value);
   if (!list.length) return <div style={{ fontSize: 12, color: 'var(--text3)' }}>No data</div>;
@@ -112,7 +112,11 @@ function RankedBars({ items, format, colorKey }) {
       {list.map((r, i) => {
         const share = (r.value || 0) / total * 100;
         return (
-          <div key={r.name}>
+          <div key={r.name} onClick={() => onPick && onPick(r.name)}
+               title={onPick ? `Click to filter the dashboard to ${r.name}` : undefined}
+               style={{ cursor: onPick ? 'pointer' : 'default', borderRadius: 8,
+                        padding: onPick ? '4px 6px' : 0, margin: onPick ? '0 -6px' : 0,
+                        background: active === r.name ? 'var(--accent-soft)' : 'transparent' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
               <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', width: 16,
                              fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
@@ -205,15 +209,17 @@ function DeltaTable({ rows }) {
   const TD = { textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: 'var(--text)',
                padding: '9px 0', fontVariantNumeric: 'tabular-nums', borderTop: '1px solid var(--border)' };
   return (
-    <Card title="📊 DoD & WoW" subtitle="Latest day vs previous · last 7 days vs prior 7" height="auto">
+    <Card title="📊 DoD & WoW" subtitle="Latest day vs yesterday · last 7 days vs the 7 before" height="auto">
       {!rows ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Not enough history</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
               <th style={{ ...TH, textAlign: 'left' }}>Metric</th>
               <th style={TH}>Latest day</th>
+              <th style={TH}>Yesterday</th>
               <th style={TH}>DoD</th>
               <th style={TH}>Last 7d</th>
+              <th style={TH}>Prior 7d</th>
               <th style={TH}>WoW</th>
             </tr>
           </thead>
@@ -222,8 +228,10 @@ function DeltaTable({ rows }) {
               <tr key={r.label}>
                 <td style={{ ...TD, textAlign: 'left', fontWeight: 600, color: 'var(--text2)' }}>{r.label}</td>
                 <td style={TD}>{r.fmt(r.day)}</td>
+                <td style={{ ...TD, color: 'var(--text2)', fontWeight: 600 }}>{r.fmt(r.prevDay)}</td>
                 <td style={TD}><DeltaCell v={r.dod}/></td>
                 <td style={TD}>{r.fmt(r.week)}</td>
+                <td style={{ ...TD, color: 'var(--text2)', fontWeight: 600 }}>{r.fmt(r.prevWeek)}</td>
                 <td style={TD}><DeltaCell v={r.wow}/></td>
               </tr>
             ))}
@@ -372,7 +380,7 @@ function HierTree({ nodes }) {
   );
 }
 
-export default function OverviewPage({ data, filters, goto }) {
+export default function OverviewPage({ data, filters, goto, drillTo }) {
   const [gran, setGran] = useState('day');
   const [drill, setDrill] = useState(null);            // KPI drill-through modal
 
@@ -380,6 +388,8 @@ export default function OverviewPage({ data, filters, goto }) {
   const trend   = useMemo(() => groupByDate(data, gran), [data, gran]);
   const byChan  = useMemo(() => groupArr(data, 'vco_channel_name'), [data]);
   const byPay   = useMemo(() => groupArr(data, 'payment_sources'), [data]);
+  // Server sends this only when a B2B channel is in the filter.
+  const custRows = useMemo(() => (data && data.customers) || [], [data]);
   // Segment breakdown (orders/lines/qty/revenue per 1P/3P/B2B) — for the funnels.
   const bySeg = useMemo(() => ((data.by && data.by.purchaseLevel) || []).filter(r => ['1P', '3P', 'B2B'].includes(r.name)), [data]);
   const segRows = (measure) => bySeg.map(r => ({ name: r.name, value: r[measure] || 0, color: SEG_COLORS[r.name] }));
@@ -415,10 +425,12 @@ export default function OverviewPage({ data, filters, goto }) {
     const pc = (a, b) => (b ? (a - b) / b * 100 : null);
     const cur = d[d.length - 1], prv = d[d.length - 2];
     const l7 = d.slice(-7), p7 = d.slice(-14, -7);
+    // The comparison bases are shown, not just the percentages — a "-40% DoD"
+    // means something different against 12 orders than against 12,000.
     const mk = (key, label, fmtFn) => ({
       label, fmt: fmtFn,
-      day: cur?.[key] || 0, dod: pc(cur?.[key] || 0, prv?.[key] || 0),
-      week: sum(l7, key),   wow: pc(sum(l7, key), sum(p7, key)),
+      day:  cur?.[key] || 0, prevDay:  prv?.[key] || 0, dod: pc(cur?.[key] || 0, prv?.[key] || 0),
+      week: sum(l7, key),    prevWeek: sum(p7, key),    wow: pc(sum(l7, key), sum(p7, key)),
     });
     const n = (v) => Math.round(v || 0).toLocaleString('en-IN');
     return [mk('orders', 'Orders', n), mk('revenue', 'Revenue', fmtCr), mk('qty', 'Qty', n)];
@@ -433,7 +445,6 @@ export default function OverviewPage({ data, filters, goto }) {
         { icon:'✅', value:pct(m.delivRate), label:'delivery rate', tone: m.delivRate>=60?'good':'bad' },
         { icon:'🔁', value:pct(m.rtoRate), label:'RTO/returns', tone: m.rtoRate>8?'bad':'good' },
         byChan[0] && { icon:'🏆', value:byChan[0].name, label:`top channel · ${pct(byChan[0].revShare)}` },
-        data.movers?.category?.up?.[0] && { icon:'🚀', value:data.movers.category.up[0].name, label:'fastest-growing category' },
       ]}/>
 
       {/* ── Overall KPI Section — headline cards + funnel breakdowns (revenue in Cr) ── */}
@@ -491,8 +502,10 @@ export default function OverviewPage({ data, filters, goto }) {
 
       {/* ── Orders by Channel raised above the DoD/WoW movement table. ── */}
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)', gap:16 }}>
-        <Card title="📡 Orders by Channel" subtitle="Ranked by orders · share of total" height="auto">
+        <Card title="📡 Orders by Channel" subtitle="Ranked by orders · click a row to filter the dashboard" height="auto">
           <RankedBars colorKey="channels"
+            onPick={(n) => drillTo && drillTo({ channels: [n] })}
+            active={(filters?.channels || []).length === 1 ? filters.channels[0] : null}
             items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.orders }))}/>
         </Card>
         <DeltaTable rows={deltaRows}/>
@@ -523,8 +536,11 @@ export default function OverviewPage({ data, filters, goto }) {
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="var(--grid)" vertical={false}/>
-              <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
-              <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={35}/>
+              {/* Day granularity packs ~140 labels onto the axis; small type
+                  plus a computed interval keeps them from colliding. */}
+              <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:8.5 }} tickLine={false} axisLine={false}
+                     minTickGap={18} interval="preserveStartEnd"/>
+              <YAxis tick={{ fill:'var(--text3)', fontSize:9.5 }} tickLine={false} axisLine={false} width={35}/>
               <Tooltip content={<TT/>}/>
               <Legend wrapperStyle={{ fontSize:11, paddingTop:6 }} iconType="plainline"/>
               <Area type="monotone" dataKey="orders" name="Orders" stroke="var(--series-1)" strokeWidth={2} fill="url(#ga)" dot={false}/>
@@ -553,19 +569,40 @@ export default function OverviewPage({ data, filters, goto }) {
       </div>
 
       {/* ── Orders by Payment (Channel moved up, above the DoD/WoW table) ── */}
-      <Card title="💳 Orders by Payment" subtitle="Ranked by orders · share of total" height="auto">
+      <Card title="💳 Orders by Payment" subtitle="Ranked by orders · click a row to filter the dashboard" height="auto">
         <RankedBars colorKey="payments"
+          onPick={(n) => drillTo && drillTo({ payments: [n] })}
+          active={(filters?.payments || []).length === 1 ? filters.payments[0] : null}
           items={byPay.map(p => ({ name: p.name, value: p.orders }))}/>
       </Card>
+
+      {/* ── B2B customers. Rendered only when the view is scoped to a B2B
+             channel — PW_Store is retail and the 3P feed carries no customer,
+             so the server returns an empty list for those and this disappears. ── */}
+      {custRows.length > 0 && (
+        <DataTable
+          title="🏢 B2B Customers"
+          subtitle="Named accounts in the current B2B selection"
+          data={custRows}
+          searchKeys={['customer']}
+          searchPlaceholder="Search customer…"
+          columns={[
+            { key:'customer', label:'Customer', bold:true, w:320, maxW:320, wrap:true },
+            { key:'orders',   label:'Orders',   right:true, render:v=>(v||0).toLocaleString('en-IN') },
+            { key:'qty',      label:'Qty',      right:true, render:v=>Math.round(v||0).toLocaleString('en-IN') },
+            { key:'revenue',  label:'Revenue',  right:true, render:v=>fmt(v) },
+            { key:'revShare', label:'Rev %',    right:true, render:v=>`${(v||0).toFixed(1)}%` },
+            { key:'aov',      label:'AOV',      right:true, render:v=>fmt(v) },
+          ]}
+          filename="b2b_customers"
+          maxH={520}
+        />
+      )}
 
       {/* ── Top Categories by Revenue — click + to drill parent → sub-cat → sub-sub → product ── */}
       <Card title="📚 Top Categories by Revenue" subtitle="Click + to drill down: parent → sub-category → sub-sub → product" height="auto">
         <HierTree nodes={data.hierarchy}/>
       </Card>
-
-      {/* ── Top Movers, last — closing note on the page rather than a mid-page
-             interruption between the KPIs and the charts. ── */}
-      <MoversCard title="🚀 Top Movers — Categories" movers={data.movers && data.movers.category}/>
     </div>
   );
 }
