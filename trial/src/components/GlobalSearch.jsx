@@ -3,14 +3,13 @@ import { Search, X, CornerDownLeft } from 'lucide-react';
 import { fmt } from '../utils/dataEngine';
 
 // Entities we index from the current bundle → which page each jumps to.
+// Brand / Courier / Warehouse are not indexed: they only ever routed to the
+// Operations page, and a hit that lands nowhere is worse than no hit.
 const SOURCES = [
   { arr: b => b.by?.channel,   type: 'Channel',   page: 'channels',   icon: '📡', nameKey: 'name' },
   { arr: b => b.by?.parent,    type: 'Category',  page: 'products',   icon: '📚', nameKey: 'name' },
   { arr: b => b.by?.state,     type: 'State',     page: 'geographic', icon: '📍', nameKey: 'name' },
   { arr: b => b.by?.city,      type: 'City',      page: 'geographic', icon: '🏙️', nameKey: 'name' },
-  { arr: b => b.by?.brand,     type: 'Brand',     page: 'operations', icon: '🔖', nameKey: 'name' },
-  { arr: b => b.by?.courier,   type: 'Courier',   page: 'operations', icon: '🚚', nameKey: 'name' },
-  { arr: b => b.by?.warehouse, type: 'Warehouse', page: 'operations', icon: '🏭', nameKey: 'name' },
   { arr: b => b.by?.payment,   type: 'Payment',   page: 'channels',   icon: '💳', nameKey: 'name' },
   { arr: b => b.couponStats?.coupons, type: 'Coupon', page: 'coupons', icon: '🎟️', nameKey: 'coupon' },
   { arr: b => b.sku,           type: 'SKU',       page: 'skusummary', icon: '🏷️', nameKey: 'product_variant_name', alt: 'sku_code', cap: 3000 },
@@ -115,7 +114,7 @@ export default function GlobalSearch({ data, goto }) {
             <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 16px', borderBottom:'1px solid var(--border)' }}>
               <Search size={18} color="var(--accent)"/>
               <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} onKeyDown={onKeyDown}
-                placeholder="Search coupons, SKUs, channels, states, cities, brands…"
+                placeholder="Search coupons, SKUs, channels, states, cities…"
                 style={{ flex:1, fontSize:15, background:'transparent', border:'none', outline:'none', color:'var(--text)' }}/>
               <button onClick={() => setOpen(false)} style={{ display:'flex', color:'var(--text3)', background:'transparent', padding:3 }}><X size={16}/></button>
             </div>

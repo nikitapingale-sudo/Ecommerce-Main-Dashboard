@@ -2,9 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, Check, ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { FILTER_OPTIONS, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, sameSet } from '../utils/dataEngine';
 
-// Filter sections. Status Group, OMS, and — per request — Order Status,
-// Finance Category and Order Category are intentionally not offered.
-// (The backend still supports those keys; they are just not exposed here.)
+// Filter sections. Status Group, OMS, Order Status, Finance Category,
+// Order Category and — per request — State, Warehouse and Courier are
+// intentionally not offered. The backend still accepts every one of those
+// keys, so older shared links keep resolving; they are just not exposed.
 const SECTIONS = [
   // `invert`: the stored array is what to HIDE, so a ticked box means
   // "included". Cancelled / refunded / returned start unticked.
@@ -12,9 +13,6 @@ const SECTIONS = [
   { key:'channels',       label:'Channel',           icon:'📡', opt:'channels' },
   { key:'categories',     label:'Category',          icon:'📚', opt:'categories' },
   { key:'payments',       label:'Payment Mode',      icon:'💳', opt:'payments' },
-  { key:'states',         label:'State',             icon:'📍', opt:'states' },
-  { key:'warehouses',     label:'Warehouse',         icon:'🏭', opt:'warehouses' },
-  { key:'couriers',       label:'Courier',           icon:'🚚', opt:'couriers' },
   { key:'orderTypes',     label:'Order Type',        icon:'🧾', opt:'orderTypes' },
   { key:'purchaseLevels', label:'Purchase Level',    icon:'🏆', opt:'purchaseLevels' },
   { key:'coupons',        label:'Coupon Code',       icon:'🎟️', opt:'coupons' },
