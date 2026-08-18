@@ -345,7 +345,7 @@ export function Tabs({ tabs, value, onChange }) {
 //               only holds a page of a larger server-side result)
 export function DataTable({ title, data, columns, filename='export', maxH=420,
                             searchable=true, searchKeys, searchPlaceholder,
-                            onExport, exportLabel, totalRows }) {
+                            onExport, exportLabel, totalRows, footer }) {
   const [sk, setSk] = useState(null);
   const [sd, setSd] = useState('desc');
   const [page, setPage] = useState(0);
@@ -466,6 +466,26 @@ export function DataTable({ title, data, columns, filename='export', maxH=420,
               </tr>
             ))}
           </tbody>
+          {/* Pinned totals. Deliberately a <tfoot> outside `paged`, so it is
+              never sorted into the middle of the rows, never filtered out by a
+              search, and never paginated away. */}
+          {footer && paged.length > 0 && (
+            <tfoot style={{ position:'sticky', bottom:0, zIndex:1 }}>
+              <tr style={{ background:'var(--surface2)', borderTop:'2px solid var(--border2)' }}>
+                {columns.map(c => (
+                  <td key={c.key} style={{
+                    padding:'9px 12px', textAlign:c.right?'right':'left',
+                    color:'var(--text)', fontWeight:800, fontSize:12.5,
+                    whiteSpace:'nowrap', fontVariantNumeric:'tabular-nums',
+                  }}>
+                    {footer[c.key] !== undefined && footer[c.key] !== null
+                      ? (c.render ? c.render(footer[c.key], footer) : footer[c.key])
+                      : ''}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
