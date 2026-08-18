@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Legend } from 'recharts';
 import { KPI, KPIGrid, Card, DataTable, MoversCard, InsightBar } from '../components/UI';
-import { groupArr, fmt, fmtN, fmtCr, pct, COLORS } from '../utils/dataEngine';
+import { groupArr, fmt, fmtN, fmtCr, pct, COLORS, full, fullMoney } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -55,7 +55,8 @@ export default function GeographicPage({ data }) {
       ]}/>
       <KPIGrid cols={Math.min(stateNorm.length, 5)}>
         {stateNorm.slice(0,5).map((s,i) => (
-          <KPI key={s.name} icon="📍" label={s.name} value={s.orders.toLocaleString()} sub={`${fmt(s.revenue)} · ${pct(s.revShare)}`} color={COLORS[i]}/>
+          <KPI key={s.name} icon="📍" label={s.name} value={s.orders.toLocaleString()} sub={`${fmt(s.revenue)} · ${pct(s.revShare)}`} exact={`${full(s.orders)} orders
+${fullMoney(s.revenue)}`} color={COLORS[i]}/>
         ))}
       </KPIGrid>
 

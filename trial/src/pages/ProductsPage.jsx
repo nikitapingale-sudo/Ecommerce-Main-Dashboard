@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { KPI, KPIGrid, Card, DataTable, SectionLabel, InsightBar } from '../components/UI';
-import { fmt, fmtCr, pct, COLORS } from '../utils/dataEngine';
+import { fmt, fmtCr, pct, COLORS, full, fullMoney } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -67,7 +67,8 @@ export default function ProductsPage({ data }) {
         <SectionLabel>{level} — Click cards or bars to drill deeper</SectionLabel>
         <KPIGrid cols={Math.min(cur.length, 4)}>
           {cur.slice(0,4).map((d,i)=>(
-            <KPI key={d.name} label={d.name} value={d.orders.toLocaleString()} sub={`${fmt(d.revenue)} · ${pct(d.revShare)}`}
+            <KPI key={d.name} label={d.name} value={d.orders.toLocaleString()} sub={`${fmt(d.revenue)} · ${pct(d.revShare)}`} exact={`${full(d.orders)} orders
+${fullMoney(d.revenue)}`}
               color={COLORS[i%COLORS.length]}
               onClick={!selSS ? ()=>{ if(!selP)setSelP(d.name); else if(!selS)setSelS(d.name); else setSelSS(d.name); } : undefined}/>
           ))}

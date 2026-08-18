@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { KPI, KPIGrid, Card, DataTable, SectionLabel, MoversCard, InsightBar } from '../components/UI';
-import { groupArr, fmt, fmtCr, pct, COLORS } from '../utils/dataEngine';
+import { groupArr, fmt, fmtCr, pct, COLORS, full, fullMoney } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -41,7 +41,8 @@ export default function ChannelsPage({ data }) {
         <SectionLabel>Channel KPIs</SectionLabel>
         <KPIGrid cols={Math.min(byChan.length, 4)}>
           {byChan.slice(0,4).map((c,i)=>(
-            <KPI key={c.name} icon="📡" label={c.name} value={c.orders.toLocaleString()} sub={`${fmt(c.revenue)} · ${pct(c.revShare)}`} color={COLORS[i]}/>
+            <KPI key={c.name} icon="📡" label={c.name} value={c.orders.toLocaleString()} sub={`${fmt(c.revenue)} · ${pct(c.revShare)}`} exact={`${full(c.orders)} orders
+${fullMoney(c.revenue)}`} color={COLORS[i]}/>
           ))}
         </KPIGrid>
       </div>

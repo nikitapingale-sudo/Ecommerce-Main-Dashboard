@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { X, Plus, Minus } from 'lucide-react';
-import { Card, StatList, InsightBar } from '../components/UI';
+import { X } from 'lucide-react';
+import { Card, StatList, InsightBar, DataTable } from '../components/UI';
 import { metrics, groupArr, groupByDate, fmt, fmtCr, pct, full, fullMoney, STATUS_COLOR, COLORS, ORDINAL, FILTER_OPTIONS } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
@@ -19,6 +19,17 @@ const kmt = (n) => {
   if (Math.abs(n) >= 1e3) return (n / 1e3).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + 'K';
   return Math.round(n).toLocaleString('en-IN');
 };
+/* Axis dates as "1-Aug" / "Aug-26" rather than the raw ISO string, which is
+   both long and hard to scan. Handles day (YYYY-MM-DD) and month (YYYY-MM). */
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function shortDate(v) {
+  if (typeof v !== 'string') return v;
+  const p = v.split('-');
+  if (p.length >= 3) return `${Number(p[2])}-${MON[Number(p[1]) - 1] || p[1]}`;
+  if (p.length === 2) return `${MON[Number(p[1]) - 1] || p[1]}-${p[0].slice(2)}`;
+  return v;
+}
+
 const KROW = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 };
 const FROW = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 };
 // Colour follows the ENTITY, not its rank — the bars are sorted by size, so
@@ -205,14 +216,17 @@ function DeltaCell({ v }) {
 }
 
 function DeltaTable({ rows }) {
-  const TH = { textAlign: 'right', fontSize: 10, fontWeight: 700, color: 'var(--text3)',
-               textTransform: 'uppercase', letterSpacing: '.04em', padding: '0 0 8px' };
-  const TD = { textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: 'var(--text)',
-               padding: '9px 0', fontVariantNumeric: 'tabular-nums', borderTop: '1px solid var(--border)' };
+  // Compact: 7 columns in one card, so the padding is trimmed and the numbers
+  // sit closer together rather than drifting apart across the width.
+  const TH = { textAlign: 'right', fontSize: 9.5, fontWeight: 700, color: 'var(--text3)',
+               textTransform: 'uppercase', letterSpacing: '.03em', padding: '0 0 5px', whiteSpace: 'nowrap' };
+  const TD = { textAlign: 'right', fontSize: 12, fontWeight: 700, color: 'var(--text)',
+               padding: '5px 0', fontVariantNumeric: 'tabular-nums',
+               borderTop: '1px solid var(--border)', whiteSpace: 'nowrap' };
   return (
     <Card title="📊 DoD & WoW" subtitle="Latest day vs yesterday · last 7 days vs the 7 before" height="auto">
       {!rows ? <div style={{ fontSize: 12, color: 'var(--text3)' }}>Not enough history</div> : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
           <thead>
             <tr>
               <th style={{ ...TH, textAlign: 'left' }}>Metric</th>
@@ -337,49 +351,7 @@ function DrillModal({ drill, data, onClose }) {
 }
 
 /* ── Category hierarchy drill-down row: parent → sub_cat → sub_sub → product ── */
-function HierRow({ node, depth, maxRev }) {
-  const [open, setOpen] = useState(false);
-  const kids = node.children || [];
-  const hasKids = kids.length > 0;
-  const barW = maxRev > 0 ? (node.revenue || 0) / maxRev * 100 : 0;
-  const col = COLORS[depth % COLORS.length];
-  return (
-    <div>
-      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px 6px 0', paddingLeft: depth * 20,
-                    borderBottom:'1px solid var(--border)', boxSizing:'border-box' }}>
-        {hasKids ? (
-          <button onClick={() => setOpen(o => !o)} title={open ? 'Collapse' : 'Expand'}
-            style={{ width:18, height:18, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center',
-                     background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:5, color:'var(--accent)' }}>
-            {open ? <Minus size={12}/> : <Plus size={12}/>}
-          </button>
-        ) : <span style={{ width:18, flexShrink:0 }}/>}
-        <span style={{ width:9, height:9, borderRadius:3, background:col, flexShrink:0 }}/>
-        <span style={{ flex:1, minWidth:60, fontSize:12.5, color:'var(--text)', fontWeight: depth === 0 ? 600 : 500,
-                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{node.name || '—'}</span>
-        <div className="hide-mobile" style={{ width:90, height:6, background:'var(--surface2)', borderRadius:4, overflow:'hidden', flexShrink:0 }}>
-          <div style={{ height:'100%', width:`${barW}%`, background:col, borderRadius:4 }}/>
-        </div>
-        <b style={{ width:120, textAlign:'right', flexShrink:0, fontSize:12.5, color:'var(--text)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>{fmt(node.revenue || 0)}</b>
-        <span style={{ width:48, textAlign:'right', flexShrink:0, fontSize:11, color:'var(--text3)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' }}>{(node.revShare || 0).toFixed(1)}%</span>
-      </div>
-      {open && hasKids && kids.map((c, i) => (
-        <HierRow key={i} node={c} depth={depth + 1} maxRev={maxRev}/>
-      ))}
-    </div>
-  );
-}
 
-function HierTree({ nodes }) {
-  const list = nodes || [];
-  const maxRev = Math.max(...list.map(n => n.revenue || 0), 1);
-  if (!list.length) return <div style={{ fontSize:12, color:'var(--text3)' }}>No data</div>;
-  return (
-    <div style={{ display:'flex', flexDirection:'column' }}>
-      {list.slice(0, 15).map((n, i) => <HierRow key={i} node={n} depth={0} maxRev={maxRev}/>)}
-    </div>
-  );
-}
 
 export default function OverviewPage({ data, filters, goto, drillTo }) {
   const [gran, setGran] = useState('day');
@@ -405,6 +377,13 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
     return { orders: pct2(sum(l,'orders'), sum(p,'orders')), revenue: pct2(sum(l,'revenue'), sum(p,'revenue')),
              qty: pct2(sum(l,'qty'), sum(p,'qty')) };
   }, [data]);
+
+  // Prepaid share, computed the same way the server computes codPct: distinct
+  // orders on that payment mode over distinct orders overall. by.payment's
+  // `orders` is already a distinct count per mode, so the two agree.
+  const prepaidOrders = useMemo(
+    () => (byPay.find(p => p.name === 'Prepaid') || {}).orders || 0, [byPay]);
+  const prepaidPct = m.orders > 0 ? prepaidOrders / m.orders * 100 : 0;
 
   // Share of total orders for a status count (for "% above, number below").
   const share = (n) => m.orders > 0 ? (n / m.orders * 100) : 0;
@@ -451,8 +430,10 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
       {/* ── Overall KPI Section — headline cards + funnel breakdowns (revenue in Cr) ── */}
       <KpiSection title="Overall KPI Section">
         <div style={KROW}>
-          <StatCard label="Total Orders"  value={kmt(m.orders)}       accent="#4f46e5" sub={wowSub(wow.orders)}/>
-          <StatCard label="Total Revenue" value={fmtCr(m.rev)}        accent="#16a34a" sub={wowSub(wow.revenue)}/>
+          <StatCard label="Total Orders"  value={kmt(m.orders)}       accent="#4f46e5" sub={wowSub(wow.orders)} title={`Total Orders
+${full(m.orders)}`}/>
+          <StatCard label="Total Revenue" value={fmtCr(m.rev)}        accent="#16a34a" sub={wowSub(wow.revenue)} title={`Total Revenue
+${fullMoney(m.rev)}`}/>
           {/* Net realisable revenue — already excludes cancelled + refunded /
               returned lines, so no status filtering is needed by hand.
               Return/RTO is intentionally still counted. */}
@@ -468,20 +449,30 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
                          + "Return/RTO and Lost are NOT excluded — that revenue still counts."}/>
           {/* "Order Amount" removed — it is the same sum as Total Revenue
               (both are SUM(vc_order_item_amount)), so it only duplicated it. */}
-          <StatCard label="Cancelled Amount" value={fmtCr(m.cancelledAmount)} accent="#e11d48"/>
-          <StatCard label="Refund Amount"    value={fmtCr(m.refundAmount)}    accent="#ea580c"/>
-          <StatCard label="Total Qty"     value={kmt(m.qty)}          accent="#2563eb" sub={wowSub(wow.qty)}/>
+          <StatCard label="Cancelled Amount" value={fmtCr(m.cancelledAmount)} accent="#e11d48" title={`Cancelled Amount
+${fullMoney(m.cancelledAmount)}`}/>
+          <StatCard label="Refund Amount"    value={fmtCr(m.refundAmount)}    accent="#ea580c" title={`Refund Amount
+${fullMoney(m.refundAmount)}`}/>
+          <StatCard label="Total Qty"     value={kmt(m.qty)}          accent="#2563eb" sub={wowSub(wow.qty)} title={`Total Qty
+${full(m.qty)}`}/>
         </div>
       </KpiSection>
 
       {/* ── Order economics. Total Qty lives in the headline row above. ── */}
       <KpiSection>
         <div style={KROW}>
-          <StatCard label="Total Line Item"   value={kmt(m.lines)}/>
-          <StatCard label="ASP"               value={fmtCr(m.asp)}/>
-          <StatCard label="AOV"               value={fmtCr(m.aov)}/>
-          <StatCard label="COD %"             value={pct(m.codPct)}/>
-          <StatCard label="Shipping Charges"  value={fmtCr(m.delCharges)}/>
+          <StatCard label="Total Line Item"   value={kmt(m.lines)} title={`Total Line Item
+${full(m.lines)}`}/>
+          <StatCard label="ASP"               value={fmtCr(m.asp)} title={`ASP
+${fullMoney(m.asp)}`}/>
+          <StatCard label="AOV"               value={fmtCr(m.aov)} title={`AOV
+${fullMoney(m.aov)}`}/>
+          <StatCard label="COD %"             value={pct(m.codPct)} title={`COD %
+${full(m.cod)} COD orders`}/>
+          <StatCard label="Prepaid %"         value={pct(prepaidPct)} title={`Prepaid %
+${full(prepaidOrders)} prepaid orders`}/>
+          <StatCard label="Shipping Charges"  value={fmtCr(m.delCharges)} title={`Shipping Charges
+${fullMoney(m.delCharges)}`}/>
         </div>
       </KpiSection>
 
@@ -539,8 +530,8 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
               <CartesianGrid stroke="var(--grid)" vertical={false}/>
               {/* Day granularity packs ~140 labels onto the axis; small type
                   plus a computed interval keeps them from colliding. */}
-              <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:8.5 }} tickLine={false} axisLine={false}
-                     minTickGap={18} interval="preserveStartEnd"/>
+              <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false}
+                     minTickGap={16} interval="preserveStartEnd" tickFormatter={shortDate}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:9.5 }} tickLine={false} axisLine={false} width={35}/>
               <Tooltip content={<TT/>}/>
               <Legend wrapperStyle={{ fontSize:11, paddingTop:6 }} iconType="plainline"/>
@@ -560,7 +551,7 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={groupByDate(data,'month')} margin={{ top:4, right:8, bottom:0, left:8 }} barCategoryGap="12%">
               <CartesianGrid stroke="var(--grid)" vertical={false}/>
-              <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false}/>
+              <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={shortDate}/>
               <YAxis tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} width={80} tickFormatter={fmtCr}/>
               <Tooltip content={<TT/>} cursor={{ fill:'var(--surface2)' }}/>
               <Bar dataKey="revenue" name="Revenue" fill="var(--series-1)" radius={[4,4,0,0]} maxBarSize={64}/>
@@ -599,11 +590,6 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
           maxH={520}
         />
       )}
-
-      {/* ── Top Categories by Revenue — click + to drill parent → sub-cat → sub-sub → product ── */}
-      <Card title="📚 Top Categories by Revenue" subtitle="Click + to drill down: parent → sub-category → sub-sub → product" height="auto">
-        <HierTree nodes={data.hierarchy}/>
-      </Card>
     </div>
   );
 }

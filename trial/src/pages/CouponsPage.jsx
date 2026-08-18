@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { KPI, KPIGrid, Card, DataTable, InsightBar, Pill } from '../components/UI';
-import { fmt, fmtCr, pct, COLORS, downloadSummaryCsv } from '../utils/dataEngine';
+import { fmt, fmtCr, pct, COLORS, downloadSummaryCsv, full, fullMoney } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -41,10 +41,10 @@ export default function CouponsPage({ data, filters }) {
       ]}/>
 
       <KPIGrid cols={4}>
-        <KPI icon="🎟️" label="Coupon Revenue"   value={fmtCr(totals.rev)}            sub={`${cs.length} coupons`} color="#4f46e5"/>
-        <KPI icon="📦" label="Coupon Orders"     value={totals.orders.toLocaleString()} sub="with a coupon" color="#2563eb"/>
+        <KPI icon="🎟️" label="Coupon Revenue"   value={fmtCr(totals.rev)}            sub={`${cs.length} coupons`} color="#4f46e5" exact={fullMoney(totals.rev)}/>
+        <KPI icon="📦" label="Coupon Orders"     value={totals.orders.toLocaleString()} sub="with a coupon" color="#2563eb" exact={full(totals.orders)}/>
         <KPI icon="✅" label="Success Rate"      value={pct(totals.rate)}             sub={`${totals.succ.toLocaleString()} successful`} color={rateColor(totals.rate)}/>
-        <KPI icon="🏆" label="Top Coupon"        value={best?.coupon || '—'}          sub={best ? fmt(best.revenue) : ''} color="#16a34a"/>
+        <KPI icon="🏆" label="Top Coupon"        value={best?.coupon || '—'}          sub={best ? fmt(best.revenue) : ''} color="#16a34a" exact={best ? fullMoney(best.revenue) : ''}/>
       </KPIGrid>
 
       <Card title="🎟️ Top Coupons by Revenue" height={240}>
