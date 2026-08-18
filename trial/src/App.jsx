@@ -11,7 +11,6 @@ import ProductsPage from './pages/ProductsPage';
 import SKUPage from './pages/SKUPage';
 import GeographicPage from './pages/GeographicPage';
 import PendencyPage from './pages/PendencyPage';
-import OperationsPage from './pages/OperationsPage';
 import RawDataPage from './pages/RawDataPage';
 import EcomWallahPage from './pages/EcomWallahPage';
 import CouponsPage from './pages/CouponsPage';
@@ -39,13 +38,13 @@ const PAGE_LABELS = {
   channels:'📡 Channels', products:'📚 Products', coupons:'🎟️ Coupons',
   skusummary:'🧾 SKU Level Summary', components:'🧩 Component Level Summary',
   geographic:'🗺️ Geographic', pendency:'⏳ Pendency',
-  operations:'⚙️ Operations', actions:'🎯 Action Center', rawdata:'📋 Raw Data',
+  actions:'🎯 Action Center', rawdata:'📋 Raw Data',
 };
 
 const PAGE_EYEBROW = {
   ecomwallah:'AI ASSISTANT', overview:'EXECUTIVE SUMMARY', revenue:'REVENUE & DISCOUNTS',
   channels:'CHANNELS & PAYMENTS', geographic:'STATES & CITIES', fulfilment:'DELIVERY & RTO',
-  pendency:'OPEN ORDERS', operations:'WAREHOUSE & COURIER', actions:'WHAT TO DO NEXT',
+  pendency:'OPEN ORDERS', actions:'WHAT TO DO NEXT',
   products:'CATEGORY DRILL-DOWN', coupons:'PROMO PERFORMANCE', rawdata:'ORDER-LEVEL DATA',
   skusummary:'SKU-LEVEL SUMMARY', components:'BUNDLE COMPONENT BREAKDOWN',
 };
@@ -178,7 +177,6 @@ export default function App({ userEmail, onLogout }) {
       case 'components': return <ComponentSummaryPage {...p}/>;
       case 'geographic': return <GeographicPage {...p}/>;
       case 'pendency':   return <PendencyPage   {...p}/>;
-      case 'operations': return <OperationsPage {...p}/>;
       case 'actions':    return <ActionsPage    {...p}/>;
       case 'coupons':    return <CouponsPage    {...p}/>;
       case 'ecomwallah': return <EcomWallahPage {...p}/>;
