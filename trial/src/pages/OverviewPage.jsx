@@ -96,7 +96,7 @@ function FunnelChart({ title, unit = '', rows, format }) {
       The swatch colour is keyed to the entity's position in the FULL option
       list, not to its rank in this view — filtering to fewer channels must
       not repaint the survivors. ────────────────────────────────────────── */
-function RankedBars({ items, format, colorKey, onPick, active }) {
+function RankedBars({ items, format, exactFormat, colorKey, onPick, active }) {
   const fmtV = format || ((v) => (v || 0).toLocaleString('en-IN'));
   const list = (items || []).filter(r => (r.value || 0) > 0).sort((a, b) => b.value - a.value);
   if (!list.length) return <div style={{ fontSize: 12, color: 'var(--text3)' }}>No data</div>;
@@ -113,7 +113,8 @@ function RankedBars({ items, format, colorKey, onPick, active }) {
         const share = (r.value || 0) / total * 100;
         return (
           <div key={r.name} onClick={() => onPick && onPick(r.name)}
-               title={onPick ? `Click to filter the dashboard to ${r.name}` : undefined}
+               title={`${r.name}: ${(exactFormat || fmtV)(r.value)} · ${share.toFixed(1)}%`
+                      + (onPick ? '\nClick to filter the dashboard to this' : '')}
                style={{ cursor: onPick ? 'pointer' : 'default', borderRadius: 8,
                         padding: onPick ? '4px 6px' : 0, margin: onPick ? '0 -6px' : 0,
                         background: active === r.name ? 'var(--accent-soft)' : 'transparent' }}>
@@ -502,11 +503,11 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
 
       {/* ── Orders by Channel raised above the DoD/WoW movement table. ── */}
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)', gap:16 }}>
-        <Card title="📡 Orders by Channel" subtitle="Ranked by orders · click a row to filter the dashboard" height="auto">
-          <RankedBars colorKey="channels"
+        <Card title="💰 Revenue by Channel" subtitle="Ranked by revenue · click a row to filter the dashboard" height="auto">
+          <RankedBars colorKey="channels" format={fmtCr} exactFormat={fullMoney}
             onPick={(n) => drillTo && drillTo({ channels: [n] })}
             active={(filters?.channels || []).length === 1 ? filters.channels[0] : null}
-            items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.orders }))}/>
+            items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.revenue }))}/>
         </Card>
         <DeltaTable rows={deltaRows}/>
       </div>
@@ -569,11 +570,11 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
       </div>
 
       {/* ── Orders by Payment (Channel moved up, above the DoD/WoW table) ── */}
-      <Card title="💳 Orders by Payment" subtitle="Ranked by orders · click a row to filter the dashboard" height="auto">
-        <RankedBars colorKey="payments"
+      <Card title="💳 Revenue by Payment Mode" subtitle="Ranked by revenue · click a row to filter the dashboard" height="auto">
+        <RankedBars colorKey="payments" format={fmtCr} exactFormat={fullMoney}
           onPick={(n) => drillTo && drillTo({ payments: [n] })}
           active={(filters?.payments || []).length === 1 ? filters.payments[0] : null}
-          items={byPay.map(p => ({ name: p.name, value: p.orders }))}/>
+          items={byPay.map(p => ({ name: p.name, value: p.revenue }))}/>
       </Card>
 
       {/* ── B2B customers. Rendered only when the view is scoped to a B2B
