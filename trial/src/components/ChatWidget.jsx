@@ -93,7 +93,7 @@ export default function ChatWidget({ data }) {
     <>
       {/* Floating button */}
       <button onClick={() => setOpen(o => !o)} title="Ask EcomWallah" style={{
-        position:'fixed', right:22, bottom:22, zIndex:9600, width:58, height:58, borderRadius:'50%',
+        position:'fixed', right:26, bottom:84, zIndex:9600, width:58, height:58, borderRadius:'50%',
         background:'var(--accent-grad)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center',
         boxShadow:'0 8px 24px rgba(120,60,30,.4)', fontSize:24 }}>
         {open ? <X size={24}/> : '🤖'}
@@ -101,7 +101,7 @@ export default function ChatWidget({ data }) {
 
       {/* Chat panel */}
       {open && (
-        <div style={{ position:'fixed', right:22, bottom:92, zIndex:9600, width:390, maxWidth:'92vw',
+        <div style={{ position:'fixed', right:26, bottom:154, zIndex:9600, width:390, maxWidth:'92vw',
                       height:560, maxHeight:'76vh', background:'var(--surface)', border:'1px solid var(--border)',
                       borderRadius:18, boxShadow:'var(--shadow2)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
           {/* Header */}

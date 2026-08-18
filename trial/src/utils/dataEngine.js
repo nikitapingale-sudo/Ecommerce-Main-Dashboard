@@ -156,7 +156,7 @@ export const EMPTY_BUNDLE = {
   by: {},
   date: { day: [], week: [], month: [] },
   hierarchy: [],
-  sku: [], variant: [],
+  sku: [], variant: [], customers: [],
   movers: { category: { window:'', up:[], down:[] }, channel: { window:'', up:[], down:[] }, state: { window:'', up:[], down:[] }, sku: { window:'', up:[], down:[] } },
   couponStats: { coupons: [], couponSku: [] },
   pendency: { count: 0, avgDays: 0, over7: 0, over15: 0, pendingRev: 0,
@@ -425,6 +425,13 @@ export const fmtN = (n) => {
   return String(Math.round(n));
 };
 export const pct = (n) => `${(n || 0).toFixed(1)}%`;
+
+// Unrounded figures for hover tooltips. fmtCr/fmtN abbreviate for display;
+// these give the number someone would paste into a spreadsheet.
+export const full = (n) => (n === null || n === undefined || Number.isNaN(Number(n)))
+  ? '—' : Math.round(Number(n)).toLocaleString('en-IN');
+export const fullMoney = (n) => (n === null || n === undefined || Number.isNaN(Number(n)))
+  ? '—' : '₹' + Math.round(Number(n)).toLocaleString('en-IN');
 // Compact Indian currency for big KPI numbers: ₹1.21 Cr / ₹3.4 L
 export const fmtCr = (n) => {
   if (!n && n !== 0) return '—';

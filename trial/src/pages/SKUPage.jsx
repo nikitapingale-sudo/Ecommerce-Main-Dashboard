@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { DataTable, SectionLabel, InsightBar, MoversCard, KPI, KPIGrid } from '../components/UI';
-import { metrics, fmt, fmtCr, fmtN, pct, COLORS, downloadSummaryCsv } from '../utils/dataEngine';
+import { DataTable, SectionLabel, InsightBar, KPI, KPIGrid } from '../components/UI';
+import { metrics, fmt, fmtCr, fmtN, pct, full, fullMoney, COLORS, downloadSummaryCsv } from '../utils/dataEngine';
 
 /* Plain grouped integer — counts on this page are read as exact figures,
    so they are not abbreviated to K. */
@@ -37,15 +37,16 @@ export default function SKUPage({ data, filters }) {
       <KPIGrid cols={4}>
         {/* Counts in full, not abbreviated — these are read as exact figures. */}
         <KPI icon="🗂️" label="Orders"        value={num(m.orders)}
-             sub={`${num(m.lines)} line items`}                         color="var(--series-1)"/>
+             sub={`${num(m.lines)} line items`} exact={full(m.orders)}   color="var(--series-1)"/>
         {/* One revenue card. Gross is the headline because it is what the
             Revenue column in the table below sums to; the realised figure
             rides along as the sub-line rather than a second card. */}
         <KPI icon="💰" label="Revenue"       value={fmtCr(m.rev)}
              sub={`final ${fmtCr(m.netRevenue)} · ${pct(m.netRevPct)} of gross`}
+             exact={`gross ${fullMoney(m.rev)}\nfinal ${fullMoney(m.netRevenue)}`}
              color="var(--series-3)"/>
         <KPI icon="📦" label="Qty"           value={num(m.qty)}
-             sub={`${(m.aul || 0).toFixed(1)} units / order`}           color="var(--series-7)"/>
+             sub={`${(m.aul || 0).toFixed(1)} units / order`} exact={full(m.qty)} color="var(--series-7)"/>
         {/* Count comes from the server and covers every matching row; skuData
             is only the top slice the table renders, so its length is just the
             cap. */}
@@ -56,11 +57,9 @@ export default function SKUPage({ data, filters }) {
 
       <KPIGrid cols={3}>
         <KPI icon="🏷️" label="ASP"           value={fmt(m.asp)}
-             sub="revenue ÷ qty"                                        color="var(--series-2)"/>
+             sub="revenue ÷ qty" exact={fullMoney(m.asp)}                color="var(--series-2)"/>
         <KPI icon="🧾" label="AOV"           value={fmt(m.aov)}
-             sub="revenue ÷ orders"                                     color="var(--series-4)"/>
-        <KPI icon="📉" label="Discount"      value={pct(m.discPct)}
-             sub={`${fmtCr(m.discount)} off MRP`}                       color="var(--st-serious)"/>
+             sub="revenue ÷ orders" exact={fullMoney(m.aov)}             color="var(--series-4)"/>
       </KPIGrid>
 
       <DataTable
@@ -90,15 +89,10 @@ export default function SKUPage({ data, filters }) {
           { key:'asp', label:'ASP', right:true, render:v=>fmt(v) },
           { key:'aov', label:'AOV', right:true, render:v=>fmt(v) },
           { key:'mrp', label:'MRP', right:true, render:v=>fmt(v) },
-          { key:'discount', label:'Disc%', right:true, render:v=>`${v.toFixed(1)}%` },
         ]}
         filename="sku_performance"
         maxH={620}
       />
-
-      {/* Movers last — a closing note under the table rather than something
-          that pushes the table itself below the fold. */}
-      <MoversCard title="🚀 Top Movers — SKUs" movers={data.movers && data.movers.sku}/>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { KPI, KPIGrid, Card, DataTable, InsightBar } from '../components/UI';
-import { fetchComponents, downloadSummaryCsv, fmt, fmtCr, pct, COLORS } from '../utils/dataEngine';
+import { fetchComponents, downloadSummaryCsv, fmt, fmtCr, pct, full, fullMoney, COLORS } from '../utils/dataEngine';
 
 const TT = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -69,10 +69,11 @@ export default function ComponentSummaryPage({ data, filters }) {
 
       <KPIGrid cols={4}>
         <KPI icon="🧩" label="Components"      value={totals.count.toLocaleString()}
-             sub={totals.shown < totals.count ? `top ${totals.shown.toLocaleString()} listed below` : 'distinct SKUs'} color="#7c3aed"/>
-        <KPI icon="📦" label="Component Units" value={Math.round(totals.qty).toLocaleString()}  sub="qty after bundle split" color="#2563eb"/>
-        <KPI icon="💰" label="Component Sales" value={fmtCr(totals.sales)}                       sub="all components · ties to SKU revenue" color="#16a34a"/>
-        <KPI icon="🏷️" label="Blended ASP"     value={fmt(totals.asp)}                           sub="sales ÷ units" color="#d97706"/>
+             sub={totals.shown < totals.count ? `top ${totals.shown.toLocaleString()} listed below` : 'distinct SKUs'}
+             exact={full(totals.count)} color="#7c3aed"/>
+        <KPI icon="📦" label="Component Units" value={Math.round(totals.qty).toLocaleString()}  sub="qty after bundle split" exact={full(totals.qty)} color="#2563eb"/>
+        <KPI icon="💰" label="Component Sales" value={fmtCr(totals.sales)}                       sub="all components · ties to SKU revenue" exact={fullMoney(totals.sales)} color="#16a34a"/>
+        <KPI icon="🏷️" label="Blended ASP"     value={fmt(totals.asp)}                           sub="sales ÷ units" exact={fullMoney(totals.asp)} color="#d97706"/>
       </KPIGrid>
 
       <DataTable
@@ -103,21 +104,6 @@ export default function ComponentSummaryPage({ data, filters }) {
         filename="component_summary"
         maxH={620}
       />
-
-      {/* Chart last — the table is the page's primary content. */}
-      <Card title="🧩 Top Components by Sales" subtitle="Bundle revenue split across components by MRP ratio" height={300}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={top} layout="vertical" margin={{ left:4, right:60, top:0, bottom:0 }}>
-            <CartesianGrid stroke="var(--grid)" horizontal={false}/>
-            <XAxis type="number" tick={{ fill:'var(--text3)', fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={fmtCr}/>
-            <YAxis type="category" dataKey="short" tick={{ fill:'var(--text2)', fontSize:10 }} width={170} tickLine={false} axisLine={false}/>
-            <Tooltip content={<TT/>}/>
-            <Bar dataKey="sales_component" name="Sales" radius={[0,3,3,0]}>
-              {top.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]}/>)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
     </div>
   );
 }
