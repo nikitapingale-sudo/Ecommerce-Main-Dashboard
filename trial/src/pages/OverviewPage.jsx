@@ -30,8 +30,6 @@ const PX_PER_POINT = { day: 34, week: 58, month: 90 };
 const AXIS_W = 46;     // gutter for the pinned y-axis
 const PLOT_X_H = 26;   // x-axis band height, identical in both layers so the
                        // pinned axis lines up with the scrolling plot
-const TOP_H = '56%';   // counts panel
-const BOT_H = '44%';   // revenue panel — carries the shared date labels
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function shortDate(v) {
   if (typeof v !== 'string') return v;
@@ -454,19 +452,6 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
 ${full(m.orders)}`}/>
           <StatCard label="Total Revenue" value={fmtCr(m.rev)}        accent="#16a34a" sub={wowSub(wow.revenue)} title={`Total Revenue
 ${fullMoney(m.rev)}`}/>
-          {/* Net realisable revenue — already excludes cancelled + refunded /
-              returned lines, so no status filtering is needed by hand.
-              Return/RTO is intentionally still counted. */}
-          <StatCard label="Final Revenue" value={fmtCr(m.netRevenue)} accent="#0d9488" emphasis
-                    sub={`${pct(m.netRevPct)} of gross · −${fmtCr(m.excludedRevenue)}`}
-                    title={"Revenue excluding cancelled and refunded/returned money.\n\n"
-                         + "Excludes any line that:\n"
-                         + "  • has a refunded date\n"
-                         + "  • has a cancelled date\n"
-                         + "  • is Cancelled (incl. 3P 'cancelled')\n"
-                         + "  • is Refunded or Returned (incl. Shipped & Returned,\n"
-                         + "    3P 'returned', 'returned_failed')\n\n"
-                         + "Return/RTO and Lost are NOT excluded — that revenue still counts."}/>
           {/* "Order Amount" removed — it is the same sum as Total Revenue
               (both are SUM(vc_order_item_amount)), so it only duplicated it. */}
           <StatCard label="Cancelled Amount" value={fmtCr(m.cancelledAmount)} accent="#e11d48" title={`Cancelled Amount
@@ -528,8 +513,8 @@ ${fullMoney(m.delCharges)}`}/>
              The Order Lifecycle funnel above covers the same breakdown). ── */}
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16, minWidth:0 }}>
         <Card title="📈 Trend"
-          subtitle="Orders & qty above · revenue below · scroll sideways for every day"
-          height={360}
+          subtitle="Orders & qty over time · scroll sideways for every day"
+          height={260}
           style={{ minWidth:0, overflow:'hidden' }}
           right={
             <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
@@ -538,82 +523,49 @@ ${fullMoney(m.delCharges)}`}/>
               ))}
             </div>
           }>
-          {/* Revenue gets its OWN panel rather than sharing the axis: it runs
-              ~1,370x the scale of orders, so one axis flattens orders and qty
-              onto the baseline. A second y-axis would be worse - the two scales
-              align arbitrarily, so the chart implies a correlation that is not
-              in the data. Two panels, one date axis, one scroll, linked hover. */}
+          {/* Horizontal scroll so EVERY period gets a label. 140 days cannot
+              share a card width without dropping labels, so the plot is given
+              the width it needs and the card scrolls. The y-axis is drawn again
+              in a pinned layer on the left — otherwise it scrolls out of view
+              and the values become unreadable as soon as you move right. */}
           <div style={{ position:'relative', height:'100%' }}>
-            {/* Pinned axes, one per panel, so values stay readable while the
-                plot scrolls. Axis only: no strokes, no fills, no pointer events. */}
             <div style={{ position:'absolute', left:0, top:0, bottom:0, width:AXIS_W, zIndex:2,
                           background:'var(--surface)', pointerEvents:'none' }}>
-              <div style={{ height:TOP_H }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trend} margin={{ top:4, right:0, bottom:0, left:0 }}>
-                    <YAxis tick={{ fill:'var(--text3)', fontSize:9.5 }} tickLine={false} axisLine={false} width={AXIS_W}/>
-                    <XAxis dataKey="date" tick={false} axisLine={false} tickLine={false} height={1}/>
-                    <Area dataKey="orders" stroke="none" fill="none"/>
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{ height:BOT_H }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trend} margin={{ top:4, right:0, bottom:0, left:0 }}>
-                    <YAxis tick={{ fill:'var(--text3)', fontSize:9.5 }} tickLine={false} axisLine={false}
-                           width={AXIS_W} tickFormatter={fmtCr}/>
-                    <XAxis dataKey="date" tick={false} axisLine={false} tickLine={false} height={PLOT_X_H}/>
-                    <Area dataKey="revenue" stroke="none" fill="none"/>
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend} margin={{ top:4, right:0, bottom:0, left:0 }}>
+                  <YAxis tick={{ fill:'var(--text3)', fontSize:9.5 }} tickLine={false} axisLine={false} width={AXIS_W}/>
+                  <XAxis dataKey="date" tick={false} axisLine={false} tickLine={false} height={PLOT_X_H}/>
+                  <Area dataKey="orders" stroke="none" fill="none"/>
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-
             <div style={{ height:'100%', overflowX:'auto', overflowY:'hidden' }}>
               <div style={{ height:'100%', minWidth:'100%',
                             width: trend.length * (PX_PER_POINT[gran] || 34) + AXIS_W }}>
-                {/* Counts panel. */}
-                <div style={{ height:TOP_H }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={trend} margin={{ top:4, right:8, bottom:0, left:0 }} syncId="ovTrend">
-                      <defs>
-                        <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--series-1)" stopOpacity={0.22}/><stop offset="95%" stopColor="var(--series-1)" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--series-3)" stopOpacity={0.22}/><stop offset="95%" stopColor="var(--series-3)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="var(--grid)" vertical={false}/>
-                      <XAxis dataKey="date" tick={false} axisLine={false} tickLine={false} height={1}/>
-                      <YAxis tick={false} axisLine={false} tickLine={false} width={AXIS_W}/>
-                      <Tooltip content={<TT/>}/>
-                      <Legend wrapperStyle={{ fontSize:11 }} iconType="plainline"/>
-                      <Area type="monotone" dataKey="orders" name="Orders" stroke="var(--series-1)" strokeWidth={2} fill="url(#ga)" dot={false}/>
-                      <Area type="monotone" dataKey="qty"    name="Qty"    stroke="var(--series-3)" strokeWidth={2} fill="url(#gb)" dot={false}/>
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                {/* Revenue panel - own scale, and it carries the date labels for
-                    both. syncId ties the two hover crosshairs together. */}
-                <div style={{ height:BOT_H }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={trend} margin={{ top:4, right:8, bottom:0, left:0 }} syncId="ovTrend">
-                      <defs>
-                        <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--series-2)" stopOpacity={0.22}/><stop offset="95%" stopColor="var(--series-2)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="var(--grid)" vertical={false}/>
-                      <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false}
-                             interval={0} tickFormatter={shortDate} height={PLOT_X_H}/>
-                      <YAxis tick={false} axisLine={false} tickLine={false} width={AXIS_W}/>
-                      <Tooltip content={<TT/>}/>
-                      <Legend wrapperStyle={{ fontSize:11 }} iconType="plainline"/>
-                      <Area type="monotone" dataKey="revenue" name="Revenue" stroke="var(--series-2)" strokeWidth={2} fill="url(#gr)" dot={false}/>
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={trend} margin={{ top:4, right:8, bottom:0, left:0 }}>
+              <defs>
+                <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--series-1)" stopOpacity={0.22}/><stop offset="95%" stopColor="var(--series-1)" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--series-3)" stopOpacity={0.22}/><stop offset="95%" stopColor="var(--series-3)" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="var(--grid)" vertical={false}/>
+              {/* Day granularity packs ~140 labels onto the axis; small type
+                  plus a computed interval keeps them from colliding. */}
+              {/* interval={0} = every label drawn, none skipped. The scroll
+                  container above supplies the width that makes that legible. */}
+              <XAxis dataKey="date" tick={{ fill:'var(--text3)', fontSize:9 }} tickLine={false} axisLine={false}
+                     interval={0} tickFormatter={shortDate} height={PLOT_X_H}/>
+              <YAxis tick={false} axisLine={false} tickLine={false} width={AXIS_W}/>
+              <Tooltip content={<TT/>}/>
+              <Legend wrapperStyle={{ fontSize:11, paddingTop:6 }} iconType="plainline"/>
+              <Area type="monotone" dataKey="orders" name="Orders" stroke="var(--series-1)" strokeWidth={2} fill="url(#ga)" dot={false}/>
+              <Area type="monotone" dataKey="qty"    name="Qty"    stroke="var(--series-3)" strokeWidth={2} fill="url(#gb)" dot={false}/>
+            </AreaChart>
+          </ResponsiveContainer>
               </div>
             </div>
           </div>
