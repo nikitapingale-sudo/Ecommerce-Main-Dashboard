@@ -381,6 +381,28 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
   const byPay   = useMemo(() => groupArr(data, 'payment_sources'), [data]);
   // Server sends this only when a B2B channel is in the filter.
   const custRows = useMemo(() => (data && data.customers) || [], [data]);
+
+  // Revenue by order category, limited to the two store fronts. Rev % is
+  // recomputed across just these rows so the column reads as a share of what is
+  // shown; the bundle's own revShare is measured against every category.
+  const ORDER_CATS = ['pw_store', 'pw_live'];
+  const ocRows = useMemo(() => {
+    const rows = (groupArr(data, 'order_category') || [])
+      .filter(r => ORDER_CATS.includes(String(r.name)));
+    const tot = rows.reduce((a, r) => a + (r.revenue || 0), 0) || 1;
+    return rows
+      .map(r => ({ ...r, revSharePct: (r.revenue || 0) / tot * 100 }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [data]);
+  const ocTotal = useMemo(() => {
+    if (!ocRows.length) return null;
+    const sum = (k) => ocRows.reduce((a, r) => a + (r[k] || 0), 0);
+    const qty = sum('qty'), revenue = sum('revenue'), orders = sum('orders');
+    return { name: 'Total', orders, lines: sum('lines'), qty, revenue,
+             revSharePct: 100,
+             aov: orders > 0 ? revenue / orders : 0,
+             asp: qty > 0 ? revenue / qty : 0 };
+  }, [ocRows]);
   // Segment breakdown (orders/lines/qty/revenue per 1P/3P/B2B) — for the funnels.
   const bySeg = useMemo(() => ((data.by && data.by.purchaseLevel) || []).filter(r => ['1P', '3P', 'B2B'].includes(r.name)), [data]);
   const segRows = (measure) => bySeg.map(r => ({ name: r.name, value: r[measure] || 0, color: SEG_COLORS[r.name] }));
@@ -505,7 +527,30 @@ ${fullMoney(m.delCharges)}`}/>
             active={(filters?.channels || []).length === 1 ? filters.channels[0] : null}
             items={byChan.slice(0, 8).map(c => ({ name: c.name, value: c.revenue }))}/>
         </Card>
-        <DeltaTable rows={deltaRows}/>
+        {/* DoD & WoW is only three rows, so this column came up short beside
+            the eight-row channel card. Order Category fills that gap. */}
+        <div style={{ display:'flex', flexDirection:'column', gap:16, minWidth:0 }}>
+          <DeltaTable rows={deltaRows}/>
+          {ocRows.length > 0 && (
+            <DataTable
+              title="🏬 Revenue by Order Category"
+              data={ocRows}
+              searchable={false}
+              columns={[
+                { key:'name',        label:'Category', bold:true, w:150 },
+                { key:'orders',      label:'Orders',   right:true, render:v=>(v||0).toLocaleString('en-IN') },
+                { key:'qty',         label:'Qty',      right:true, render:v=>Math.round(v||0).toLocaleString('en-IN') },
+                { key:'revenue',     label:'Revenue',  right:true, render:v=>fmt(v) },
+                { key:'revSharePct', label:'Rev %',    right:true, render:v=>`${(v||0).toFixed(1)}%` },
+                { key:'aov',         label:'AOV',      right:true, render:v=>fmt(v) },
+                { key:'asp',         label:'ASP',      right:true, render:v=>fmt(v) },
+              ]}
+              footer={ocTotal}
+              filename="revenue_by_order_category"
+              maxH={260}
+            />
+          )}
+        </div>
       </div>
 
       {/* ── Trend (full width; the Status Funnel beside it was removed, and with
