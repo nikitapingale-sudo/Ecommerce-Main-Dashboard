@@ -42,7 +42,6 @@ export default function RevenuePage({ data }) {
   const byCat    = useMemo(() => groupArr(data, 'parent_name'), [data]);
   const byPay    = useMemo(() => groupArr(data, 'payment_sources'), [data]);
   const byFin    = useMemo(() => groupArr(data, 'finance_exam_category'), [data]);
-  const byOC     = useMemo(() => groupArr(data, 'order_category'), [data]);
   const monthly  = useMemo(() => groupByDate(data,'month'), [data]);
 
   return (
@@ -139,10 +138,8 @@ export default function RevenuePage({ data }) {
       </div>
 
       <DataTable title="Revenue by Channel"          data={byChan}  columns={COLS} filename="rev_channel"/>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-        <DataTable title="Revenue by Finance Category" data={byFin} columns={COLS} filename="rev_fin_cat"/>
-        <DataTable title="Revenue by Order Category"   data={byOC}  columns={COLS} filename="rev_order_cat"/>
-      </div>
+      {/* Revenue by Order Category moved to the Overview page. */}
+      <DataTable title="Revenue by Finance Category" data={byFin} columns={COLS} filename="rev_fin_cat"/>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
         <DataTable title="Revenue by Payment Mode"  data={byPay}  columns={COLS} filename="rev_payment"/>
         <DataTable title="Revenue by Category"      data={byCat}  columns={COLS} filename="rev_category"/>
