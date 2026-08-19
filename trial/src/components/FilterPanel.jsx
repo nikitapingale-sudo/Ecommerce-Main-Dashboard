@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, Check, ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react';
-import { FILTER_OPTIONS, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, sameSet } from '../utils/dataEngine';
+import { FILTER_OPTIONS, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, isDefaultWindow, todayISO, dateToLabel, sameSet } from '../utils/dataEngine';
 
 // Filter sections. Status Group, OMS, Order Status, Finance Category,
 // Order Category and — per request — State, Warehouse and Courier are
@@ -103,9 +103,7 @@ function FilterSection({ icon, label, options, selected, onChange, invert }) {
 
 const DATE_KEYS = ['dateFrom', 'dateTo', 'deliveryDateFrom', 'deliveryDateTo', 'refundedDateFrom', 'refundedDateTo'];
 function counts(f) {
-  const defaultWindow = (f.dateFrom || '') === DEFAULT_DATE_FROM
-                     && (f.dateTo || '') === DEFAULT_DATE_TO;
-  let n = (!defaultWindow && (f.dateFrom || f.dateTo)) ? 1 : 0;
+  let n = (!isDefaultWindow(f) && (f.dateFrom || f.dateTo)) ? 1 : 0;
   if (f.deliveryDateFrom || f.deliveryDateTo) n++;
   if (f.refundedDateFrom || f.refundedDateTo) n++;
   Object.entries(f).forEach(([k, v]) => {
@@ -135,10 +133,13 @@ export default function FilterPanel({ open, onClose, filters, onChange, onReset,
   const draftCount = counts(draft);
   const apply = () => onChange(draft);
   const reset = () => { const c = blank(filters); setDraft(c); onChange(c); };
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
   const rawMax = (dateBounds && dateBounds.maxDate) || '';
-  // Never allow picking a future date. The dataset's maxDate can be a bad
-  // value (e.g. year 2526), so cap the pickable/quick-select max at today.
+  // Anchor for the 7D/30D/90D quick picks: the latest REAL data date. The
+  // dataset's maxDate can be a bad value (e.g. year 2526), so cap it at today.
+  // The pickers themselves take `today` as their max — the default window runs
+  // to the current date, and clamping to a maxDate that lags by a day would
+  // make that default read as out of range.
   const anchor = rawMax && rawMax < today ? rawMax : today;
   const minD = (dateBounds && dateBounds.minDate) || '';
   const dirty = JSON.stringify(draft) !== JSON.stringify(filters);
@@ -161,10 +162,14 @@ export default function FilterPanel({ open, onClose, filters, onChange, onReset,
         <div style={{ padding:'13px 14px', borderBottom:'1px solid var(--border)' }}>
           <div style={{ fontSize:12, fontWeight:700, color:'var(--text2)', marginBottom:8 }}>📅 Order Date</div>
           <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-            <input type="date" value={draft.dateFrom||''} min={minD} max={anchor} onChange={e => setD('dateFrom', e.target.value)}
+            <input type="date" value={draft.dateFrom||''} min={minD} max={today} onChange={e => setD('dateFrom', e.target.value)}
               style={{ flex:1, minWidth:0, padding:'7px 8px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--text)', background:'var(--surface)' }}/>
             <span style={{ color:'var(--text3)', fontSize:11 }}>to</span>
-            <input type="date" value={draft.dateTo||''} min={minD} max={anchor} onChange={e => setD('dateTo', e.target.value)}
+            {/* Shows today when the bound is open — the window does run to the
+                current date. The stored value stays '' until the user picks a
+                date, so the default view keeps hitting the static snapshot
+                instead of a live call the office firewall would block. */}
+            <input type="date" value={dateToLabel(draft.dateTo)} min={minD} max={today} onChange={e => setD('dateTo', e.target.value)}
               style={{ flex:1, minWidth:0, padding:'7px 8px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--text)', background:'var(--surface)' }}/>
           </div>
           <div style={{ display:'flex', gap:6, marginTop:8, flexWrap:'wrap' }}>

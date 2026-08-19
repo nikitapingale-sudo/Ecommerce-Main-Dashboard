@@ -474,6 +474,29 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
 ${full(m.orders)}`}/>
           <StatCard label="Total Revenue" value={fmtCr(m.rev)}        accent="#16a34a" sub={wowSub(wow.revenue)} title={`Total Revenue
 ${fullMoney(m.rev)}`}/>
+          {/* Net realisable revenue — excludes cancelled + refunded/returned
+              STATUSES, so no status filtering is needed by hand. A line that
+              merely carries a refunded date is NOT deducted (per request);
+              Return/RTO is intentionally still counted too. */}
+          {/* The default view already hides cancelled/refunded/returned lines in
+              the Line/Item Status filter, so there is usually nothing left for
+              this card to take out and the delta is Rs 0. Say so, rather than
+              printing "100.0% of gross · −₹0", which reads as a broken tile.
+              The delta reappears once those statuses are ticked back on. */}
+          <StatCard label="Final Revenue" value={fmtCr(m.netRevenue)} accent="#0d9488" emphasis
+                    sub={Math.round(m.excludedRevenue || 0) > 0
+                          ? `${pct(m.netRevPct)} of gross · −${fmtCr(m.excludedRevenue)}`
+                          : 'nothing excluded at these filters'}
+                    title={"Revenue excluding cancelled and refunded/returned lines.\n\n"
+                         + `${fullMoney(m.netRevenue)}\n\n`
+                         + "Excludes any line that:\n"
+                         + "  • is Cancelled (incl. 3P 'cancelled')\n"
+                         + "  • is Refunded or Returned (incl. Shipped & Returned,\n"
+                         + "    3P 'returned', 'returned_failed')\n"
+                         + "  • has a cancelled date\n\n"
+                         + "NOT excluded — this revenue still counts:\n"
+                         + "  • lines carrying only a refunded date\n"
+                         + "  • Return/RTO and Lost"}/>
           {/* "Order Amount" removed — it is the same sum as Total Revenue
               (both are SUM(vc_order_item_amount)), so it only duplicated it. */}
           <StatCard label="Cancelled Amount" value={fmtCr(m.cancelledAmount)} accent="#e11d48" title={`Cancelled Amount

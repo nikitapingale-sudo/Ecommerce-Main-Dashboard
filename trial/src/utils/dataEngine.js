@@ -77,14 +77,38 @@ async function apiFetchRetry(url, init) {
   return res;
 }
 
+// Today in the BROWSER'S LOCAL timezone. Not `toISOString().split('T')[0]` —
+// that is UTC, so in IST it reads as yesterday until 05:30 and the default
+// window would silently drop the current day's orders every morning.
+export function todayISO() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 // Order-date window the dashboard opens on: 1 Apr 2026 → today.
-// The upper bound is left OPEN rather than stamped with today's date. Stamping
-// it would change the default every midnight, so the static CDN snapshot (which
-// is generated for the default filters) would stop matching and every page load
-// would fall through to the live API. Open-ended means "up to the latest data",
-// which is today, and stays correct as new orders land.
+//
+// The upper bound is STORED OPEN ('') and only RENDERED as today's date (see
+// dateToLabel). It must not be stamped with the literal date, because the
+// default view is answered from a frozen CDN snapshot (see isDefaultFilters):
+// stamping made an explicitly-picked "today" compare equal to the default, so
+// it silently returned the snapshot's numbers — which end at whenever the
+// snapshot was generated, not at today. That produced the contradiction where
+// 1 Apr → 19 Aug (snapshot, stale) reported LESS revenue than 1 Apr → 18 Aug
+// (live API). Open-ended means "up to the latest data"; any date the user
+// actually picks is a real filter and goes to the live API.
 export const DEFAULT_DATE_FROM = '2026-04-01';
 export const DEFAULT_DATE_TO = '';
+
+// What to SHOW for an open upper bound. The window runs to the current date, so
+// that is what the pickers and the header chip display.
+export const dateToLabel = (v) => v || todayISO();
+
+// True when the order-date window is the untouched default one.
+export function isDefaultWindow(f) {
+  return ((f && f.dateFrom) || '') === DEFAULT_DATE_FROM
+      && ((f && f.dateTo) || '') === DEFAULT_DATE_TO;
+}
 
 // Line/Item statuses hidden by default. The dashboard opens on realised
 // business only — cancelled, refunded and returned lines are excluded until the
@@ -115,6 +139,8 @@ function isDefaultFilters(filters) {
   return Object.entries(filters).every(([k, v]) => {
     if (k === 'lineStatusesExclude') return sameSet(v, DEFAULT_LINE_STATUS_EXCLUDE);
     if (k === 'dateFrom') return (v || '') === DEFAULT_DATE_FROM;
+    // Strict: an explicitly picked upper bound — today's date included — is a
+    // real filter and must go to the live API, never to the frozen snapshot.
     if (k === 'dateTo') return (v || '') === DEFAULT_DATE_TO;
     return v == null || v === '' || (Array.isArray(v) && v.length === 0);
   });

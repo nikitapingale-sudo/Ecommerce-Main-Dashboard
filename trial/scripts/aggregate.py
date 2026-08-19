@@ -69,8 +69,7 @@ PENDENCY_TABLE_COLS = [
 ]
 #  ── Net (realisable) revenue ─────────────────────────────────────────────────
 #  "Final Revenue" excludes money that will not be realised, so the number can be
-#  read without applying status filters by hand. A line is excluded when ANY of:
-#    · it has a refunded_date          (has_refunded_date == 1)
+#  read without applying status filters by hand. A line is excluded when EITHER:
 #    · it has a cancelled_date         (has_cancelled_date == 1)
 #    · its item status group is one of NET_REV_EXCLUDED_GROUPS
 #  The groups below cover, across all three status vocabularies:
@@ -80,10 +79,18 @@ PENDENCY_TABLE_COLS = [
 #    Return/Refund <- 'Refunded', 'Returned' (= raw 'Shipped & Returned'),
 #                     'returned' (3P), 'returned_failed' (3P)
 #  RTO/Lost ('Return/RTO', 'lost') is deliberately NOT excluded — that revenue
-#  still counts. Only cancelled and refunded/returned money comes out.
-#  The date checks are not redundant with the status check: on the Viniculum leg
-#  the item status is derived FROM those dates, but on the 3P leg the status is
-#  the raw marketplace status and refunded_at can be set independently.
+#  still counts.
+#
+#  has_refunded_date is deliberately NOT part of the test (per request, Aug 2026).
+#  It used to be, and it was the ONLY thing still deducting on the default view:
+#  ~Rs 8.94 L of lines that carry a refunded_date while their item status is
+#  still Delivered or Shipped. A refunded_date on an otherwise-live line is not
+#  by itself proof the money came back, so that revenue now counts. The STATUS
+#  check still removes anything actually sitting in Refunded / Returned.
+#
+#  has_cancelled_date is kept: on the 3P leg the status is the raw marketplace
+#  status, so a cancelled_date can be set without the status group following.
+#  (It deducts Rs 0 on the current default view — it is a backstop, not a driver.)
 NET_REV_EXCLUDED_GROUPS = ("Cancelled", "Return/Refund")
 
 ORDER, LINE = "vco_external_order_number", "unique_id"
@@ -234,13 +241,12 @@ class Dataset:
         refund_amt = float(df.loc[df["has_refunded_date"] == 1, "final_revenue"].sum()) if "has_refunded_date" in df.columns else 0.0
         # Order Amount = sum of line item amounts (vc_order_item_amount = final_revenue).
         order_amount = float(df["final_revenue"].sum()) if len(df) else 0.0
-        # ── Net / "Final" revenue: drop cancelled + refunded + returned/RTO ──
+        # ── Net / "Final" revenue: drop cancelled + refunded/returned STATUSES.
+        #    A bare refunded_date no longer deducts — see NET_REV_EXCLUDED_GROUPS.
         if len(df):
             keep = ~df["item_status_group"].astype("string").isin(NET_REV_EXCLUDED_GROUPS)
             if "has_cancelled_date" in df.columns:
                 keep &= df["has_cancelled_date"] == 0
-            if "has_refunded_date" in df.columns:
-                keep &= df["has_refunded_date"] == 0
             ndf = df[keep.to_numpy()]
             net_rev = float(ndf["final_revenue"].sum())
             net_qty = float(ndf["qty"].sum())

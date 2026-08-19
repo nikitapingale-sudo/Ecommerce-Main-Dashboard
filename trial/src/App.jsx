@@ -14,10 +14,11 @@ import EcomWallahPage from './pages/EcomWallahPage';
 import CouponsPage from './pages/CouponsPage';
 import ComponentSummaryPage from './pages/ComponentSummaryPage';
 import ChatWidget from './components/ChatWidget';
-import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, sameSet } from './utils/dataEngine';
+import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, isDefaultWindow, dateToLabel, sameSet } from './utils/dataEngine';
 
 const DEFAULT_FILTERS = {
-  // Opens on 1 Apr 2026 -> today (open upper bound = latest data).
+  // Opens on 1 Apr 2026 -> today. The upper bound is stored open and shown as
+  // today's date; it must not be stamped — see DEFAULT_DATE_TO.
   dateFrom:DEFAULT_DATE_FROM, dateTo:DEFAULT_DATE_TO,
   deliveryDateFrom:'', deliveryDateTo:'',
   refundedDateFrom:'', refundedDateTo:'',
@@ -125,9 +126,7 @@ export default function App({ userEmail, onLogout }) {
   const TOTAL = totalOrders;
   const activeFilters = (() => {
     const dateKeys = new Set(['dateFrom', 'dateTo', 'deliveryDateFrom', 'deliveryDateTo', 'refundedDateFrom', 'refundedDateTo']);
-    const defaultWindow = (filters.dateFrom || '') === DEFAULT_DATE_FROM
-                       && (filters.dateTo || '') === DEFAULT_DATE_TO;
-    let n = (!defaultWindow && (filters.dateFrom || filters.dateTo)) ? 1 : 0;
+    let n = (!isDefaultWindow(filters) && (filters.dateFrom || filters.dateTo)) ? 1 : 0;
     if (filters.deliveryDateFrom || filters.deliveryDateTo) n++;
     if (filters.refundedDateFrom || filters.refundedDateTo) n++;
     Object.entries(filters).forEach(([k, v]) => {
@@ -227,7 +226,9 @@ export default function App({ userEmail, onLogout }) {
             <div style={{ textAlign:'left', lineHeight:1.2 }}>
               <div style={{ fontSize:9, fontWeight:700, color:'var(--text3)', letterSpacing:'.08em' }}>FILTERS & PERIOD</div>
               <div style={{ fontSize:12.5, fontWeight:700, color:'var(--text)' }}>
-                {(filters.dateFrom || filters.dateTo) ? `${filters.dateFrom||'…'} → ${filters.dateTo||'…'}` : 'All dates'}
+                {/* An open upper bound reads as today — that is where the
+                    window actually ends. See dateToLabel. */}
+                {(filters.dateFrom || filters.dateTo) ? `${filters.dateFrom||'…'} → ${dateToLabel(filters.dateTo)}` : 'All dates'}
                 {activeFilters > 0 && <span style={{ color:'var(--accent)' }}> · {activeFilters} active</span>}
               </div>
             </div>
