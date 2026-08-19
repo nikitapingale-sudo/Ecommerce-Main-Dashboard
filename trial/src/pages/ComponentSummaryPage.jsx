@@ -112,13 +112,19 @@ export default function ComponentSummaryPage({ data, filters }) {
       <DataTable
         title="Component-Level Summary"
         data={rows}
-        searchKeys={['component_product_variant_id','title_component','channel']}
-        searchPlaceholder="Search component id, name or channel…"
+        searchKeys={['component_product_variant_id','component_sku_code','title_component','study_material_type','channel']}
+        searchPlaceholder="Search component id, SKU, name, material type or channel…"
         onExport={() => downloadSummaryCsv({ kind:'components', filters, name:'component_summary' })}
         exportLabel="Export all components"
         columns={[
           { key:'component_product_variant_id', label:'Component ID', bold:true, w:230 },
+          { key:'component_sku_code', label:'Component SKU', w:150, render:v=>v||'—' },
           { key:'title_component', label:'Component Name', w:300, maxW:300, wrap:true },
+          // Material type comes from the live override sheet, keyed on the
+          // component's variant id, falling back to gold_product_variants'
+          // product_material_type. Same value the roll-up table above groups on,
+          // so the two always agree.
+          { key:'study_material_type', label:'Material Type', w:150, render:v=>v||'Unknown' },
           { key:'component_product_type', label:'Type', w:90 },
           { key:'channel', label:'Channel', w:120 },
           { key:'qty_component', label:'Qty', right:true, render:v=>Math.round(v).toLocaleString() },
