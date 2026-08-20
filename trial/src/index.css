@@ -1,95 +1,92 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 :root, [data-theme="light"] {
-  /* ── Light (default) — soft borders + depth for a premium look ── */
-  --bg:#f5f7fc; --sidebar:#ffffff; --surface:#ffffff; --surface2:#f5f7fb;
-  --card:#ffffff; --border:#e9ecf3; --border2:#d5dae6; --grid:#eef1f7;
-  --text:#0f1729; --text2:#586073; --text3:#9aa3b4;
-  --accent:#4f46e5; --accent2:#6366f1; --accent-soft:#eef0fe;
-  --accent-grad:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);
-  --green:#16a34a; --green-bg:#dcfce7;
-  --red:#e11d48;   --red-bg:#ffe4e6;
-  --yellow:#d97706; --yellow-bg:#fef3c7;
-  --blue:#2563eb;  --blue-bg:#dbeafe;
-  --orange:#ea580c; --cyan:#0891b2; --purple:#7c3aed; --pink:#db2777;
+  /* ── Day — warm paper, near-black ink (reference dashboard's light mode) ──
+     Flat and bordered rather than elevated: the card sits ~1.05:1 above the
+     page and the structure comes from the border, not a shadow. */
+  --bg:#faf9f5; --sidebar:#ffffff; --surface:#ffffff; --surface2:#f4f2ea;
+  --card:#ffffff; --border:#d8d2c4; --border2:#b9b1a0; --grid:#ece9df;
+  --text:#1a1a1a; --text2:#57534a; --text3:#827c70;
+  /* Accent is ink, not a hue — colour is reserved for meaning. */
+  --accent:#1a1a1a; --accent2:#3d3a33; --accent-soft:#f0eee5;
+  --accent-grad:linear-gradient(135deg,#3d3a33 0%,#1a1a1a 100%);
+  --green:#405b36; --green-bg:#e3eedc;
+  --red:#9f452c;   --red-bg:#f9dfd5;
+  --yellow:#725108; --yellow-bg:#f8e6b7;
+  --blue:#1f5fa0;  --blue-bg:#eaf1f8;
+  --orange:#c5704d; --cyan:#2a6f7d; --purple:#6b4a9e; --pink:#a8446e;
 
   /* ── Chart palette ──────────────────────────────────────────────────────
-     Categorical slots are assigned in FIXED ORDER and never cycled past 8 —
-     a generated 9th hue is indistinguishable from an existing one under
-     colour-vision deficiency. The previous 12-colour list failed validation
-     on three counts, including #ea580c vs #dc2626 at ΔE 8.7 for NORMAL
-     vision (below the 15 floor) — two of its reds were hard to tell apart
-     for everyone. These eight pass lightness band, chroma floor, CVD
-     separation, normal-vision floor and contrast. */
+     Kept from our own validated set, NOT taken from the reference: theirs is a
+     semantic palette (olive / mustard / rust), and those hues sit too close for
+     categorical use under colour-vision deficiency. Ours passes the lightness
+     band, chroma floor, CVD separation, normal-vision floor and contrast checks
+     on the new cream surface. Slots are assigned in fixed order, never cycled
+     past 8 — a generated 9th hue is indistinguishable from an existing one. */
   --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
   --series-5:#e87ba4; --series-6:#008300; --series-7:#4a3aa7; --series-8:#e34948;
-  /* Ordinal ramp — ONE hue, light→dark, for ordered magnitude (funnel stages,
-     tiers). Never use this on nominal categories: it would double-encode bar
-     length as hue. */
+  /* Ordinal ramp — ONE hue, light→dark, for ordered magnitude only. */
   --ord-1:#6da7ec; --ord-2:#3987e5; --ord-3:#256abf; --ord-4:#184f95; --ord-5:#0d366b;
-  /* Status — reserved for good/bad MEANING, never for "series 4", and always
-     shipped with an icon + label so the colour is not carrying it alone. */
+  /* Status — reserved for good/bad MEANING, always with an icon + label. */
   --st-good:#0ca30c; --st-warning:#fab219; --st-serious:#ec835a; --st-critical:#d03b3b;
-  --font:'Inter',sans-serif; --serif:'Georgia','Times New Roman',serif; --r:10px; --r2:16px;
-  --shadow:0 1px 2px rgba(16,24,40,.04), 0 2px 8px rgba(16,24,40,.05);
-  --shadow2:0 12px 34px rgba(16,24,40,.14);
+
+  --font:'Inter',system-ui,sans-serif;
+  --serif:'Fraunces','Georgia',serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --r:8px; --r2:12px;
+  --shadow:0 1px 2px rgba(26,26,26,.04);
+  --shadow2:0 10px 30px rgba(26,26,26,.12);
 }
 
-/* ── Night theme ─────────────────────────────────────────────────────────────
-   Rebuilt against measured contrast, not eyeballed. The previous version's
-   real fault was flatness: the card sat only 1.11:1 above the page and the
-   border only 1.29:1 above the card, so nothing read as raised and edges
-   disappeared. Cards now clear the page at 1.32:1 and borders at 1.56:1.
-   Hue held at 215° across the whole ramp so the greys stay tonally consistent
-   rather than drifting warm/cool between steps.                             */
+/* ── Night — the reference's dark mode: warm near-black, cream ink ──────────
+   Surfaces step 15140e -> 1f1d16 -> 353228, and the border carries the
+   structure at ~2:1 against the card. */
 [data-theme="dark"] {
-  --bg:#0b0e11; --sidebar:#0f1217; --surface:#232931; --surface2:#2d353f;
-  --card:#232931; --border:#3d4755; --border2:#4e5b6c; --grid:#2d353f;
-  /* 12.0 / 6.0 / 4.8 : 1 against the card */
-  --text:#e6e9ec; --text2:#9da7b5; --text3:#8994a6;
-  --accent:#8f97ff; --accent2:#a9b0ff; --accent-soft:#252a4d;
-  --accent-grad:linear-gradient(135deg,#6f78f0 0%,#8f97ff 100%);
-  /* Semantic colours double as delta text, so each clears 4.5:1 on the card. */
-  --green:#3ddc97; --green-bg:#10352a;
-  --red:#ff8095;   --red-bg:#3d1622;
-  --yellow:#f5c04e; --yellow-bg:#3a2c10;
-  --blue:#6cb0ff;  --blue-bg:#12283f;
-  --orange:#ff9455; --cyan:#4dc4d9; --purple:#a98bff; --pink:#f47ab0;
-  --shadow:0 1px 2px rgba(0,0,0,.5), 0 2px 10px rgba(0,0,0,.35);
-  --shadow2:0 14px 38px rgba(0,0,0,.62);
-  /* Dark is SELECTED, not an automatic flip: its own steps from the same
-     ramps, validated against the dark surface (#111c33). */
+  --bg:#15140e; --sidebar:#1a1912; --surface:#1f1d16; --surface2:#2b291f;
+  --card:#1f1d16; --border:#514c3c; --border2:#716956; --grid:#353228;
+  --text:#f4f2ea; --text2:#b5b1a3; --text3:#948e7e;
+  --accent:#f4f2ea; --accent2:#d8d4c6; --accent-soft:#353228;
+  --accent-grad:linear-gradient(135deg,#4a4639 0%,#716956 100%);
+  --green:#8aa376; --green-bg:#232a1d;
+  --red:#e08a66;   --red-bg:#2e2017;
+  --yellow:#d8ad49; --yellow-bg:#2c2611;
+  --blue:#7fb2e4;  --blue-bg:#172230;
+  --orange:#e08a66; --cyan:#6fb3ba; --purple:#b09ae0; --pink:#dd8fae;
+  /* Dark is SELECTED, not flipped: own steps, validated on the dark card. */
   --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500;
   --series-5:#d55181; --series-6:#008300; --series-7:#9085e9; --series-8:#e66767;
-  /* Ordinal inverts on a dark surface — the light end must clear the ground. */
   --ord-1:#cde2fb; --ord-2:#9ec5f4; --ord-3:#6da7ec; --ord-4:#3987e5; --ord-5:#256abf;
+  --shadow:0 1px 2px rgba(0,0,0,.45);
+  --shadow2:0 14px 38px rgba(0,0,0,.6);
 }
 
-/* ── Warm theme (editorial paper + rust) ─────────────────────────────────────
-   Same two faults as night: cards sat 1.11:1 above the page so the layout read
-   as one flat sheet, and --text3 landed at exactly 3.00:1 — right on the floor,
-   so muted labels were legible only in good light. The page is deepened rather
-   than the card lightened (the card was already near-white), which lifts
-   elevation to 1.26:1 while keeping the paper feel. Muted text now 4.3:1.
-   Hue held at 34° across the ramp.                                          */
+/* ── Warm — the same paper family, one shade deeper, with the rust accent
+   the reference uses for links and emphasis. ─────────────────────────────── */
 [data-theme="warm"] {
-  --bg:#ece1d2; --sidebar:#fefaf5; --surface:#fffcf9; --surface2:#f6efe7;
-  --card:#fffcf9; --border:#dbcbb7; --border2:#c6ad8c; --grid:#eee4d8;
-  /* 12.2 / 6.1 / 4.3 : 1 against the card */
-  --text:#3f3222; --text2:#755d3f; --text3:#8f7454;
-  --accent:#a94f2b; --accent2:#c2410c; --accent-soft:#f7e9dc;
-  --accent-grad:linear-gradient(135deg,#c2682f 0%,#a8451f 100%);
-  /* Deepened so they clear 4.5:1 as delta text on the near-white card. */
-  --green:#2f6b3f; --green-bg:#e4efe2;
-  --red:#a8341f;   --red-bg:#f7e1d9;
-  --yellow:#8a5e14; --yellow-bg:#f5ebd4;
-  --blue:#345584;  --blue-bg:#e3e9f4;
-  --orange:#b4521c; --cyan:#2a6f7d; --purple:#6b4a9e; --pink:#a8446e;
-  --shadow:0 1px 2px rgba(90,60,25,.07), 0 2px 10px rgba(90,60,25,.08);
-  --shadow2:0 14px 36px rgba(90,60,25,.20);
+  --bg:#f0ece0; --sidebar:#faf9f5; --surface:#faf9f5; --surface2:#eae5d7;
+  --card:#faf9f5; --border:#d8d2c4; --border2:#b9b1a0; --grid:#e8e3d5;
+  --text:#25231c; --text2:#5c5648; --text3:#867f70;
+  --accent:#9f452c; --accent2:#c5704d; --accent-soft:#f9dfd5;
+  --accent-grad:linear-gradient(135deg,#c5704d 0%,#9f452c 100%);
+  --green:#405b36; --green-bg:#e3eedc;
+  --red:#9f452c;   --red-bg:#f9dfd5;
+  --yellow:#725108; --yellow-bg:#f8e6b7;
+  --blue:#1f5fa0;  --blue-bg:#eaf1f8;
+  --orange:#c5704d; --cyan:#2a6f7d; --purple:#6b4a9e; --pink:#a8446e;
+  --shadow:0 1px 2px rgba(90,60,25,.05);
+  --shadow2:0 12px 34px rgba(90,60,25,.16);
 }
 
 html,body,#root{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+
+/* ── Figures ────────────────────────────────────────────────────────────────
+   Anything already marked tabular gets the mono face, so columns of numbers
+   line up digit-for-digit the way the reference dashboard's do. Targets the
+   inline style the components already set, so no component had to change. */
+[style*="tabular-nums"] { font-family: var(--mono); font-feature-settings: "tnum" 1; }
+/* Display figures keep the serif — Fraunces is the headline face, not the
+   number face, so the mono rule must not win over it on KPI values. */
+[style*="var(--serif)"] { font-family: var(--serif) !important; }
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:6px}
