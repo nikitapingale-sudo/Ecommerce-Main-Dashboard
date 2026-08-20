@@ -483,7 +483,7 @@ ${fullMoney(m.rev)}`}/>
               this card to take out and the delta is Rs 0. Say so, rather than
               printing "100.0% of gross · −₹0", which reads as a broken tile.
               The delta reappears once those statuses are ticked back on. */}
-          <StatCard label="Final Revenue" value={fmtCr(m.netRevenue)} accent="#0d9488" emphasis
+          <StatCard label="Net Price" value={fmtCr(m.netRevenue)} accent="#0d9488" emphasis
                     sub={Math.round(m.excludedRevenue || 0) > 0
                           ? `${pct(m.netRevPct)} of gross · −${fmtCr(m.excludedRevenue)}`
                           : 'nothing excluded at these filters'}
