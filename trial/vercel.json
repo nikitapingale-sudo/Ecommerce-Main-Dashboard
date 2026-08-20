@@ -4,8 +4,8 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/data/live/(.*)", "destination": "https://discounts-blackjack-rosa-karen.trycloudflare.com/api/$1" },
-    { "source": "/api/(.*)", "destination": "https://discounts-blackjack-rosa-karen.trycloudflare.com/api/$1" },
+    { "source": "/data/live/(.*)", "destination": "https://wolf-pipes-stack-increasing.trycloudflare.com/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://wolf-pipes-stack-increasing.trycloudflare.com/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
