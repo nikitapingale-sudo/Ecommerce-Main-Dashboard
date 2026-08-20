@@ -35,19 +35,28 @@
   --shadow2:0 12px 34px rgba(16,24,40,.14);
 }
 
-/* ── Dark theme ── */
+/* ── Night theme ─────────────────────────────────────────────────────────────
+   Rebuilt against measured contrast, not eyeballed. The previous version's
+   real fault was flatness: the card sat only 1.11:1 above the page and the
+   border only 1.29:1 above the card, so nothing read as raised and edges
+   disappeared. Cards now clear the page at 1.32:1 and borders at 1.56:1.
+   Hue held at 215° across the whole ramp so the greys stay tonally consistent
+   rather than drifting warm/cool between steps.                             */
 [data-theme="dark"] {
-  --bg:#0b1120; --sidebar:#0f172a; --surface:#111c33; --surface2:#0f1a30;
-  --card:#111c33; --border:#22304d; --border2:#2b3a5a; --grid:#1e293b;
-  --text:#e8edf6; --text2:#aab4c5; --text3:#7787a0;
-  --accent:#818cf8; --accent2:#a5b4fc; --accent-soft:#1e2547;
-  --accent-grad:linear-gradient(135deg,#6366f1 0%,#818cf8 100%);
-  --green:#34d399; --green-bg:#0b3b2e;
-  --red:#fb7185;   --red-bg:#3b1320;
-  --yellow:#fbbf24; --yellow-bg:#3a2c0a;
-  --blue:#60a5fa;  --blue-bg:#10243f;
-  --shadow:0 1px 2px rgba(0,0,0,.4);
-  --shadow2:0 10px 30px rgba(0,0,0,.55);
+  --bg:#0b0e11; --sidebar:#0f1217; --surface:#232931; --surface2:#2d353f;
+  --card:#232931; --border:#3d4755; --border2:#4e5b6c; --grid:#2d353f;
+  /* 12.0 / 6.0 / 4.8 : 1 against the card */
+  --text:#e6e9ec; --text2:#9da7b5; --text3:#8994a6;
+  --accent:#8f97ff; --accent2:#a9b0ff; --accent-soft:#252a4d;
+  --accent-grad:linear-gradient(135deg,#6f78f0 0%,#8f97ff 100%);
+  /* Semantic colours double as delta text, so each clears 4.5:1 on the card. */
+  --green:#3ddc97; --green-bg:#10352a;
+  --red:#ff8095;   --red-bg:#3d1622;
+  --yellow:#f5c04e; --yellow-bg:#3a2c10;
+  --blue:#6cb0ff;  --blue-bg:#12283f;
+  --orange:#ff9455; --cyan:#4dc4d9; --purple:#a98bff; --pink:#f47ab0;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 2px 10px rgba(0,0,0,.35);
+  --shadow2:0 14px 38px rgba(0,0,0,.62);
   /* Dark is SELECTED, not an automatic flip: its own steps from the same
      ramps, validated against the dark surface (#111c33). */
   --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500;
@@ -56,19 +65,28 @@
   --ord-1:#cde2fb; --ord-2:#9ec5f4; --ord-3:#6da7ec; --ord-4:#3987e5; --ord-5:#256abf;
 }
 
-/* ── Warm theme (editorial cream + rust — the signature look) ── */
+/* ── Warm theme (editorial paper + rust) ─────────────────────────────────────
+   Same two faults as night: cards sat 1.11:1 above the page so the layout read
+   as one flat sheet, and --text3 landed at exactly 3.00:1 — right on the floor,
+   so muted labels were legible only in good light. The page is deepened rather
+   than the card lightened (the card was already near-white), which lifts
+   elevation to 1.26:1 while keeping the paper feel. Muted text now 4.3:1.
+   Hue held at 34° across the ramp.                                          */
 [data-theme="warm"] {
-  --bg:#f7f1e7; --sidebar:#fffdf9; --surface:#fffdf8; --surface2:#f5eee0;
-  --card:#fffdf8; --border:#ece2d1; --border2:#dccbb1; --grid:#efe7d8;
-  --text:#34291d; --text2:#6e5c46; --text3:#a3917a;
-  --accent:#b4552f; --accent2:#c2410c; --accent-soft:#f6e8dc;
+  --bg:#ece1d2; --sidebar:#fefaf5; --surface:#fffcf9; --surface2:#f6efe7;
+  --card:#fffcf9; --border:#dbcbb7; --border2:#c6ad8c; --grid:#eee4d8;
+  /* 12.2 / 6.1 / 4.3 : 1 against the card */
+  --text:#3f3222; --text2:#755d3f; --text3:#8f7454;
+  --accent:#a94f2b; --accent2:#c2410c; --accent-soft:#f7e9dc;
   --accent-grad:linear-gradient(135deg,#c2682f 0%,#a8451f 100%);
-  --green:#3f7d4f; --green-bg:#e3efe1;
-  --red:#b5402f;   --red-bg:#f6e0d8;
-  --yellow:#b07a1e; --yellow-bg:#f4ead2;
-  --blue:#3d6098;  --blue-bg:#e2e8f3;
-  --shadow:0 1px 2px rgba(90,60,25,.06), 0 2px 8px rgba(90,60,25,.06);
-  --shadow2:0 12px 34px rgba(90,60,25,.16);
+  /* Deepened so they clear 4.5:1 as delta text on the near-white card. */
+  --green:#2f6b3f; --green-bg:#e4efe2;
+  --red:#a8341f;   --red-bg:#f7e1d9;
+  --yellow:#8a5e14; --yellow-bg:#f5ebd4;
+  --blue:#345584;  --blue-bg:#e3e9f4;
+  --orange:#b4521c; --cyan:#2a6f7d; --purple:#6b4a9e; --pink:#a8446e;
+  --shadow:0 1px 2px rgba(90,60,25,.07), 0 2px 10px rgba(90,60,25,.08);
+  --shadow2:0 14px 36px rgba(90,60,25,.20);
 }
 
 html,body,#root{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
