@@ -4,6 +4,7 @@ import { Menu, X, ChevronDown } from 'lucide-react';
 const PAGE = {
   ecomwallah: { emoji:'🤖', label:'EcomWallah' },
   overview:   { emoji:'📊', label:'Overview' },
+  observations:{ emoji:'🔎', label:'Observations' },
   revenue:    { emoji:'💰', label:'Revenue' },
   channels:   { emoji:'📡', label:'Channels' },
   geographic: { emoji:'🗺️', label:'Geographic' },
@@ -19,7 +20,7 @@ const PAGE = {
 // than sitting near the bottom of the list.
 const GROUPS = [
   { title:'Assistant',        ids:['ecomwallah'] },
-  { title:'Analytics',        ids:['overview','skusummary','components','revenue','channels','geographic'] },
+  { title:'Analytics',        ids:['overview','observations','skusummary','components','revenue','channels','geographic'] },
   { title:'Catalog & Supply', ids:['products','coupons'] },
   { title:'Data',             ids:['rawdata'] },
 ];

@@ -13,6 +13,7 @@ import RawDataPage from './pages/RawDataPage';
 import EcomWallahPage from './pages/EcomWallahPage';
 import CouponsPage from './pages/CouponsPage';
 import ComponentSummaryPage from './pages/ComponentSummaryPage';
+import ObservationsPage from './pages/ObservationsPage';
 import ChatWidget from './components/ChatWidget';
 import { fetchSummary, buildFilterOptions, EMPTY_BUNDLE, DEFAULT_LINE_STATUS_EXCLUDE, DEFAULT_DATE_FROM, DEFAULT_DATE_TO, isDefaultWindow, dateToLabel, sameSet } from './utils/dataEngine';
 
@@ -35,7 +36,7 @@ const PAGE_LABELS = {
   ecomwallah:'🤖 EcomWallah', overview:'📊 Overview', revenue:'💰 Revenue',
   channels:'📡 Channels', products:'📚 Products', coupons:'🎟️ Coupons',
   skusummary:'🧾 SKU Level Summary', components:'🧩 Component Level Summary',
-  geographic:'🗺️ Geographic',
+  geographic:'🗺️ Geographic', observations:'🔎 Observations',
   rawdata:'📋 Raw Data',
 };
 
@@ -44,6 +45,7 @@ const PAGE_EYEBROW = {
   channels:'CHANNELS & PAYMENTS', geographic:'STATES & CITIES',
   products:'CATEGORY DRILL-DOWN', coupons:'PROMO PERFORMANCE', rawdata:'ORDER-LEVEL DATA',
   skusummary:'SKU-LEVEL SUMMARY', components:'BUNDLE COMPONENT BREAKDOWN',
+  observations:'WHAT THE DATA IS TELLING US',
 };
 
 function StateMsg({ title, sub, spinner, action, tone }) {
@@ -164,6 +166,7 @@ export default function App({ userEmail, onLogout }) {
   const renderPage = () => {
     const p = { data: bundle, filters, goto: setPage, drillTo };
     switch(page) {
+      case 'observations': return <ObservationsPage {...p}/>;
       case 'revenue':    return <RevenuePage    {...p}/>;
       case 'channels':   return <ChannelsPage   {...p}/>;
       case 'products':   return <ProductsPage   {...p}/>;
