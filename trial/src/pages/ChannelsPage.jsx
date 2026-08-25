@@ -32,8 +32,8 @@ export default function ChannelsPage({ data }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
       <InsightBar items={[
-        byChan[0] && { icon:'🏆', value:byChan[0].name, label:`top channel · ${pct(byChan[0].revShare)} rev` },
-        byPay[0] && { icon:'💳', value:byPay[0].name, label:`top payment · ${pct(byPay[0].revShare)}` },
+        byChan.length > 1 && { icon:'🏆', value:byChan[0].name, label:`top channel · ${pct(byChan[0].revShare)} rev` },
+        byPay.length > 1 && { icon:'💳', value:byPay[0].name, label:`top payment · ${pct(byPay[0].revShare)}` },
         data.movers?.channel?.up?.[0] && { icon:'🚀', value:data.movers.channel.up[0].name, label:'fastest-growing channel', tone:'good' },
         data.movers?.channel?.down?.[0] && { icon:'📉', value:data.movers.channel.down[0].name, label:'declining channel', tone:'bad' },
       ]}/>

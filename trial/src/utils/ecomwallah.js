@@ -216,8 +216,8 @@ export function answer(q, b) {
     L.push(`📊 Business snapshot`);
     L.push(`• Orders: ${(m.orders||0).toLocaleString()} · Revenue: ${fmt(m.rev)} · AOV: ${fmt(m.aov)}`);
     L.push(`• Delivered ${pct(m.delivRate)} · RTO/returns ${pct(m.rtoRate)} · Cancelled ${pct(m.cancelRate)}`);
-    if (by.channel?.[0]) L.push(`• Top channel: ${by.channel[0].name} (${pct(by.channel[0].revShare)} of revenue)`);
-    if (by.parent?.[0]) L.push(`• Top category: ${by.parent[0].name} (${pct(by.parent[0].revShare)})`);
+    if ((by.channel || []).length > 1) L.push(`• Top channel: ${by.channel[0].name} (${pct(by.channel[0].revShare)} of revenue)`);
+    if ((by.parent || []).length > 1) L.push(`• Top category: ${by.parent[0].name} (${pct(by.parent[0].revShare)})`);
     if (mv.category?.up?.[0]) L.push(`• Fastest-growing category: ${mv.category.up[0].name} (${r0(mv.category.up[0].deltaPct)} in 30d)`);
     L.push(`💡 ${m.rtoRate > 8 ? `Priority: RTO at ${pct(m.rtoRate)} is above the 8% line — act now.` : `Health looks stable; focus on growing the top channels.`}`);
     return L.join('\n');
@@ -288,7 +288,8 @@ export function answer(q, b) {
     L.push(`📡 Channels by revenue`);
     (by.channel || []).slice(0, 6).forEach((c, i) => L.push(`${i+1}. ${c.name} — ${fmt(c.revenue)} (${pct(c.revShare)})`));
     if (mv.channel?.up?.[0]) L.push(`🚀 Growing: ${mv.channel.up[0].name} (${r0(mv.channel.up[0].deltaPct)})`);
-    L.push(`💡 Decision: defend the top channel's share and invest behind the fastest grower.`);
+    if ((by.channel || []).length > 1)
+      L.push(`💡 Decision: defend the top channel's share and invest behind the fastest grower.`);
     return L.join('\n');
   }
 

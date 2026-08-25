@@ -50,8 +50,8 @@ export default function RevenuePage({ data }) {
         { icon:'💰', value:fmtCr(m.rev), label:'gross revenue' },
         wowRev !== undefined && { icon:'📈', value:`${wowRev>=0?'+':''}${wowRev.toFixed(0)}%`, label:'WoW', tone: wowRev>=0?'good':'bad' },
         { icon:'💸', value:pct(m.discPct), label:'avg discount' },
-        byCat[0] && { icon:'📚', value:byCat[0].name, label:`top category · ${pct(byCat[0].revShare)}` },
-        byChan[0] && { icon:'📡', value:byChan[0].name, label:'top channel' },
+        byCat.length > 1 && { icon:'📚', value:byCat[0].name, label:`top category · ${pct(byCat[0].revShare)}` },
+        byChan.length > 1 && { icon:'📡', value:byChan[0].name, label:'top channel' },
       ]}/>
       <KPIGrid cols={4}>
         <KPI icon="💰" label="Gross Revenue"    value={fmtCr(m.rev)}        sub={`AOV ${fmt(m.aov)}`}  color="#16a34a" trend={wowRev} exact={fullMoney(m.rev)}/>

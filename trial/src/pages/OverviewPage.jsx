@@ -464,7 +464,10 @@ export default function OverviewPage({ data, filters, goto, drillTo }) {
         wow.revenue !== undefined && { icon:'📈', value:`${wow.revenue>=0?'+':''}${wow.revenue.toFixed(0)}%`, label:'revenue WoW', tone: wow.revenue>=0?'good':'bad' },
         { icon:'✅', value:pct(m.delivRate), label:'delivery rate', tone: m.delivRate>=60?'good':'bad' },
         { icon:'🔁', value:pct(m.rtoRate), label:'RTO/returns', tone: m.rtoRate>8?'bad':'good' },
-        byChan[0] && { icon:'🏆', value:byChan[0].name, label:`top channel · ${pct(byChan[0].revShare)}` },
+        // A share insight needs something to compare against. With a single
+        // channel in view this reads "top channel · 100.0%", which is true and
+        // useless, so the chip is dropped rather than shown trivially.
+        byChan.length > 1 && { icon:'🏆', value:byChan[0].name, label:`top channel · ${pct(byChan[0].revShare)}` },
       ]}/>
 
       {/* ── Overall KPI Section — headline cards + funnel breakdowns (revenue in Cr) ── */}
