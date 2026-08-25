@@ -8,3 +8,4 @@ trial/scripts/PW_Store_Daily_Report.xlsx
 trial/scripts/daily_report_*.csv
 trial/scripts/_*.txt
 trial/scripts/_*.json
+trial/scripts/sheet1_*.csv
