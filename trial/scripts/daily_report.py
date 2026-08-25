@@ -251,6 +251,16 @@ def sku_rows(bundle, parents):
     return out
 
 
+def _real_title(t):
+    """Reject placeholder component titles. Some rows carry "-", "NULL" or a
+    bare punctuation mark instead of a name; left in, they surface as a product
+    called "-" sitting near the top of the declines."""
+    t = (t or "").strip()
+    if len(t) < 3:
+        return False
+    return t.upper() not in ("NULL", "NONE", "N/A", "UNKNOWN", "NAN")
+
+
 def movers_table(cur_comp, prev_comp, rising=True, limit=12):
     """Page-6 equivalent: per-title quantity moves against the day before."""
     prev = {str(r.get("title_component")): (r.get("qty_component") or 0)
@@ -258,7 +268,7 @@ def movers_table(cur_comp, prev_comp, rising=True, limit=12):
     rows = []
     for r in (cur_comp or []):
         t = str(r.get("title_component") or "").strip()
-        if not t:
+        if not _real_title(t):
             continue
         c = r.get("qty_component") or 0
         p = prev.get(str(r.get("title_component")), 0)
@@ -268,7 +278,7 @@ def movers_table(cur_comp, prev_comp, rising=True, limit=12):
         seen = {str(r.get("title_component")) for r in (cur_comp or [])}
         for r in (prev_comp or []):
             k = str(r.get("title_component"))
-            if k not in seen:
+            if k not in seen and _real_title(k):
                 rows.append((k.strip(), 0, r.get("qty_component") or 0, -(r.get("qty_component") or 0)))
 
     rows.sort(key=lambda x: -x[3] if rising else x[3])
@@ -436,17 +446,227 @@ def say(m):
     print("[daily_report] %s" % m, flush=True)
 
 
+# ── tidy CSV, for Google Sheets + Apps Script ────────────────────────────────
+# One row per (section, scope, entity) rather than a sheet shaped like the
+# printed report. Apps Script can filter this into any layout it wants, and a
+# new section never shifts a column, so the script does not break when the
+# report grows. The printed layout is a presentation choice; this is the data.
+CSV_COLUMNS = [
+    "report_date", "section", "scope", "rank", "entity",
+    "orders", "orders_change_pct", "revenue_lakhs", "revenue_change_pct",
+    "aov", "revenue_contribution_pct", "qty", "qty_prev", "qty_diff",
+]
+
+
+def _tidy_rows(section, scope, cur_rows, prev_rows, report_date, limit=None,
+               totals=None, prev_totals=None):
+    cur = sorted(cur_rows or [], key=lambda r: -(r.get("revenue") or 0))
+    if limit:
+        cur = cur[:limit]
+    prev = index_by(prev_rows)
+    denom = (totals or {}).get("revenue") or sum(r.get("revenue") or 0 for r in (cur_rows or [])) or 1
+
+    out = []
+    for i, r in enumerate(cur, 1):
+        p = prev.get(str(r.get("name"))) or {}
+        do = delta(r.get("orders") or 0, p.get("orders") or 0)
+        dr = delta(r.get("revenue") or 0, p.get("revenue") or 0)
+        out.append({
+            "report_date": report_date, "section": section, "scope": scope,
+            "rank": i, "entity": r.get("name"),
+            "orders": int(r.get("orders") or 0),
+            "orders_change_pct": "" if do is None else round(do, 2),
+            "revenue_lakhs": round((r.get("revenue") or 0) / 1e5, 2),
+            "revenue_change_pct": "" if dr is None else round(dr, 2),
+            "aov": int(round(r.get("aov") or 0)),
+            "revenue_contribution_pct": round((r.get("revenue") or 0) / denom * 100, 2),
+            "qty": "", "qty_prev": "", "qty_diff": "",
+        })
+
+    if totals:
+        do = delta(totals.get("orders") or 0, (prev_totals or {}).get("orders") or 0)
+        dr = delta(totals.get("revenue") or 0, (prev_totals or {}).get("revenue") or 0)
+        t_ord = totals.get("orders") or 0
+        out.append({
+            "report_date": report_date, "section": section, "scope": scope,
+            "rank": 0, "entity": "TOTAL", "orders": int(t_ord),
+            "orders_change_pct": "" if do is None else round(do, 2),
+            "revenue_lakhs": round((totals.get("revenue") or 0) / 1e5, 2),
+            "revenue_change_pct": "" if dr is None else round(dr, 2),
+            "aov": int(round((totals.get("revenue") or 0) / t_ord)) if t_ord else 0,
+            "revenue_contribution_pct": 100.0,
+            "qty": "", "qty_prev": "", "qty_diff": "",
+        })
+    return out
+
+
+def _mover_rows(section, cur_comp, prev_comp, report_date, rising, limit=12):
+    prev = {str(r.get("title_component")): (r.get("qty_component") or 0) for r in (prev_comp or [])}
+    rows = []
+    for r in (cur_comp or []):
+        t = str(r.get("title_component") or "").strip()
+        if not _real_title(t):
+            continue
+        c = r.get("qty_component") or 0
+        rows.append((t, c, prev.get(str(r.get("title_component")), 0)))
+    if not rising:
+        seen = {str(r.get("title_component")) for r in (cur_comp or [])}
+        for r in (prev_comp or []):
+            k = str(r.get("title_component"))
+            if k not in seen and _real_title(k):
+                rows.append((k.strip(), 0, r.get("qty_component") or 0))
+    scored = [(t, c, p, c - p) for t, c, p in rows]
+    scored.sort(key=lambda x: -x[3] if rising else x[3])
+    scored = [s for s in scored if (s[3] > 0 if rising else s[3] < 0)][:limit]
+
+    return [{
+        "report_date": report_date, "section": section, "scope": "Yesterday",
+        "rank": i, "entity": t, "orders": "", "orders_change_pct": "",
+        "revenue_lakhs": "", "revenue_change_pct": "", "aov": "",
+        "revenue_contribution_pct": "", "qty": int(c), "qty_prev": int(p), "qty_diff": int(d),
+    } for i, (t, c, p, d) in enumerate(scored, 1)]
+
+
+def completeness(report_date):
+    """How finished is this day's data?
+
+    Orders keep landing for about a week after the fact — 3P marketplaces are
+    the slow leg. Measured on 25 Aug 2026, D-1 held only 34% of a settled day's
+    orders, D-3 held 69%, and a day did not reach ~98% until D-7. Reporting D-1
+    at face value therefore understates orders by roughly two thirds, and any
+    day-on-day comparison puts a 34%-complete day against a 51%-complete one.
+
+    Returns (pct_of_settled_baseline, baseline_orders, actual_orders). The
+    baseline is the median of days 8..25 back, which have had time to fill.
+    """
+    end = report_date
+    start = report_date - dt.timedelta(days=34)
+    b = fetch("summary", window(start.isoformat(), end.isoformat()))
+    days = {r["date"]: r.get("orders") or 0 for r in (b.get("date") or {}).get("day") or []}
+    if not days:
+        return None, 0, 0
+
+    settled = [days[d.isoformat()] for d in
+               (report_date - dt.timedelta(days=n) for n in range(8, 26))
+               if d.isoformat() in days]
+    if len(settled) < 5:
+        return None, 0, days.get(report_date.isoformat(), 0)
+
+    settled.sort()
+    mid = len(settled) // 2
+    baseline = settled[mid] if len(settled) % 2 else (settled[mid - 1] + settled[mid]) / 2
+    actual = days.get(report_date.isoformat(), 0)
+    return ((actual / baseline * 100) if baseline else None), baseline, actual
+
+
+def build_csv(yest):
+    """Same numbers as the email, in one tidy table."""
+    dbd = yest - dt.timedelta(days=1)
+    mstart = yest.replace(day=1)
+    iso = lambda d: d.isoformat()
+    rd = iso(yest)
+
+    say("fetching yesterday  %s" % rd)
+    b_y = fetch("summary", window(rd, rd))
+    say("fetching day before %s" % iso(dbd))
+    b_d = fetch("summary", window(iso(dbd), iso(dbd)))
+    say("fetching MTD        %s -> %s" % (iso(mstart), rd))
+    b_m = fetch("summary", window(iso(mstart), rd))
+    say("fetching components for the movers rows")
+    c_y = (fetch("components", window(rd, rd)) or {}).get("components") or []
+    c_d = (fetch("components", window(iso(dbd), iso(dbd))) or {}).get("components") or []
+
+    my, md, mm = b_y["metrics"], b_d["metrics"], b_m["metrics"]
+    T_Y = {"orders": my["orders"], "revenue": my["rev"]}
+    T_D = {"orders": md["orders"], "revenue": md["rev"]}
+    T_M = {"orders": mm["orders"], "revenue": mm["rev"]}
+
+    rows = []
+    # Headline, as its own section so Apps Script can read the KPI cards directly.
+    for scope, m, prev in (("Yesterday", my, md), ("MTD", mm, None)):
+        do = delta(m["orders"], (prev or {}).get("orders", 0)) if prev else None
+        dr = delta(m["rev"], (prev or {}).get("rev", 0)) if prev else None
+        rows.append({
+            "report_date": rd, "section": "Headline", "scope": scope, "rank": 1,
+            "entity": "All channels", "orders": int(m["orders"]),
+            "orders_change_pct": "" if do is None else round(do, 2),
+            "revenue_lakhs": round(m["rev"] / 1e5, 2),
+            "revenue_change_pct": "" if dr is None else round(dr, 2),
+            "aov": int(round(m.get("aov") or 0)), "revenue_contribution_pct": 100.0,
+            "qty": int(m.get("qty") or 0), "qty_prev": "", "qty_diff": "",
+        })
+
+    rows += _tidy_rows("Channel Summary", "Yesterday", b_y["by"].get("orderClass"),
+                       b_d["by"].get("orderClass"), rd, totals=T_Y, prev_totals=T_D)
+    rows += _tidy_rows("Channel Summary", "MTD", b_m["by"].get("orderClass"), None, rd, totals=T_M)
+    rows += _tidy_rows("Product Type Summary", "Yesterday", b_y["by"].get("materialType"),
+                       b_d["by"].get("materialType"), rd, totals=T_Y, prev_totals=T_D)
+    rows += _tidy_rows("Product Type Summary", "MTD", b_m["by"].get("materialType"), None, rd, totals=T_M)
+    rows += _tidy_rows("Category Summary - Publication Books", "Yesterday",
+                       subcat_rows(b_y, PUBLICATION_PARENTS), subcat_rows(b_d, PUBLICATION_PARENTS), rd)
+    rows += _tidy_rows("Category Summary - Publication Books", "MTD",
+                       subcat_rows(b_m, PUBLICATION_PARENTS), None, rd)
+    rows += _tidy_rows("Top 10 Publication Books", "Yesterday",
+                       sku_rows(b_y, PUBLICATION_PARENTS), sku_rows(b_d, PUBLICATION_PARENTS), rd, limit=10)
+    rows += _tidy_rows("Top 10 Publication Books", "MTD",
+                       sku_rows(b_m, PUBLICATION_PARENTS), None, rd, limit=10)
+    rows += _tidy_rows("Top 10 Stationery & Merchandise", "Yesterday",
+                       sku_rows(b_y, STATIONERY_PARENTS), sku_rows(b_d, STATIONERY_PARENTS), rd, limit=10)
+    rows += _tidy_rows("Top 10 Stationery & Merchandise", "MTD",
+                       sku_rows(b_m, STATIONERY_PARENTS), None, rd, limit=10)
+    rows += _mover_rows("Inclined Products", c_y, c_d, rd, rising=True)
+    rows += _mover_rows("Declined Products", c_y, c_d, rd, rising=False)
+
+    # How much of this day has actually landed. The mailer reads this and warns
+    # rather than presenting a third of a day as if it were the whole day.
+    say("measuring how complete %s is" % rd)
+    pct_done, baseline, actual = completeness(yest)
+    rows.append({
+        "report_date": rd, "section": "Data Completeness", "scope": "Yesterday",
+        "rank": 1, "entity": "Estimated completeness",
+        "orders": int(actual), "orders_change_pct": "",
+        "revenue_lakhs": "", "revenue_change_pct": "",
+        "aov": int(round(baseline)),
+        "revenue_contribution_pct": "" if pct_done is None else round(pct_done, 1),
+        "qty": "", "qty_prev": "", "qty_diff": "",
+    })
+    if pct_done is not None:
+        say("  %s holds %.0f%% of a settled day (%s orders vs a %s baseline)"
+            % (rd, pct_done, num(actual), num(baseline)))
+    return rows
+
+
+def rows_to_csv(rows):
+    import csv
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, lineterminator="\n")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 def main():
     ap = argparse.ArgumentParser(description="PW Orders daily emailer")
     ap.add_argument("--date", help="treat this YYYY-MM-DD as 'yesterday' (default: actual yesterday)")
     ap.add_argument("--dry-run", action="store_true", help="write the HTML, send nothing")
     ap.add_argument("--send", action="store_true", help="email the report")
-    ap.add_argument("--out", help="where to write the HTML in a dry run")
+    ap.add_argument("--csv", action="store_true", help="write tidy CSV for Google Sheets")
+    ap.add_argument("--out", help="where to write the output")
     a = ap.parse_args()
 
     load_env()
     yest = (dt.date.fromisoformat(a.date) if a.date
             else dt.date.today() - dt.timedelta(days=1))
+
+    if a.csv:
+        rows = build_csv(yest)
+        csv_text = rows_to_csv(rows)
+        out = a.out or os.path.join(HERE, "daily_report_%s.csv" % yest.isoformat())
+        io.open(out, "w", encoding="utf-8", newline="").write(csv_text)
+        say("wrote %s (%d rows across %d sections)"
+            % (out, len(rows), len({r["section"] for r in rows})))
+        return 0
 
     subject, html = build(yest)
     say("subject: %s" % subject)
