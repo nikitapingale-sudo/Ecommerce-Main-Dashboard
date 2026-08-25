@@ -25,7 +25,7 @@ var CONFIG = {
   CC: '',
   SUBJECT_PREFIX: 'PW Store Daily Report',
   DATA_TAB: 'Raw Data',
-  REPORT_TAB: 'Daily Report',
+  REPORT_TAB: 'Sheet1',
   SEND_HOUR: 9,
   // Refuse to email figures older than this. The dashboard's backend runs on a
   // laptop; if it was asleep the CSV silently keeps yesterday's numbers, and a
@@ -158,9 +158,9 @@ function writeRawTab_(rows) {
   var sh = ss.getSheetByName(CONFIG.DATA_TAB) || ss.insertSheet(CONFIG.DATA_TAB);
   sh.clear();
 
-  var cols = ['report_date', 'section', 'scope', 'rank', 'entity', 'orders',
-    'orders_change_pct', 'revenue_lakhs', 'revenue_change_pct', 'aov',
-    'revenue_contribution_pct', 'qty', 'qty_prev', 'qty_diff'];
+  // Read the header from the CSV itself rather than hard-coding it, so a new
+  // column added upstream appears here instead of being silently dropped.
+  var cols = Object.keys(rows[0]);
 
   var out = [cols];
   rows.forEach(function (r) {
@@ -209,6 +209,13 @@ function writeReportTab_(rows, reportDate) {
   sh.getRange(r, 1, kpis.length, 3).setValues(kpis);
   sh.getRange(r, 2, kpis.length, 1).setNumberFormat('#,##0.00');
   r += kpis.length + 1;
+
+  // Target vs achievement, before the breakdowns — it is the first thing read.
+  var tgt = pick_(rows, 'Target vs Achievement', 'MTD');
+  if (tgt.length) {
+    r = writeTargetTable_(sh, r, 'Target vs Achievement — Month to Date', tgt);
+    r += 1;
+  }
 
   // Each section, Yesterday then MTD
   SECTIONS.forEach(function (sec) {
@@ -293,6 +300,41 @@ function writeSectionTable_(sh, r, title, data, withDelta) {
   return r + body.length;
 }
 
+function writeTargetTable_(sh, r, title, data) {
+  sh.getRange(r, 1).setValue(title).setFontWeight('bold').setFontSize(12);
+  r++;
+  var head = ['Category', 'MTD Revenue (Lakhs)', 'Month Target (Lakhs)',
+              'Achieved % (full month)', 'Pace % (vs days elapsed)'];
+  sh.getRange(r, 1, 1, head.length).setValues([head])
+    .setBackground(PURPLE).setFontWeight('bold')
+    .setBorder(true, true, true, true, true, true)
+    .setHorizontalAlignment('center').setWrap(true);
+  r++;
+
+  var body = data.map(function (d) {
+    return [d.entity, numOrBlank_(d.revenue_lakhs), numOrBlank_(d.target_lakhs),
+            pctNum_(d.achieved_pct), pctNum_(d.pace_pct)];
+  });
+  sh.getRange(r, 1, body.length, head.length).setValues(body)
+    .setBorder(true, true, true, true, true, true);
+  sh.getRange(r, 2, body.length, 2).setNumberFormat('#,##0.00');
+  sh.getRange(r, 4, body.length, 2).setNumberFormat('0.0%');
+
+  data.forEach(function (d, i) {
+    var row = r + i;
+    if (d.entity === 'TOTAL') {
+      sh.getRange(row, 1, 1, head.length).setBackground(TOTAL_BG).setFontWeight('bold');
+    } else if (i % 2 === 1) {
+      sh.getRange(row, 1, 1, head.length).setBackground(GREY);
+    }
+    if (d.pace_pct !== '' && d.pace_pct !== undefined) {
+      sh.getRange(row, 5).setFontColor(Number(d.pace_pct) >= 100 ? '#127a2e' : '#c02626');
+    }
+  });
+  return r + body.length;
+}
+
+
 function writeMoverTable_(sh, r, title, data) {
   sh.getRange(r, 1).setValue(title).setFontWeight('bold').setFontSize(12);
   r++;
@@ -361,6 +403,9 @@ function buildEmailHtml_(rows, reportDate, staleDays) {
   h.push(kpiCard_('MTD Orders', fmtInt_(m.orders), ''));
   h.push(kpiCard_('MTD Revenue (Lakhs)', m.revenue_lakhs, ''));
   h.push('</tr></table>');
+
+  var tgtRows = pick_(rows, 'Target vs Achievement', 'MTD');
+  if (tgtRows.length) h.push(emailTargets_(tgtRows));
 
   SECTIONS.forEach(function (sec) {
     ['Yesterday', 'MTD'].forEach(function (scope) {
@@ -433,6 +478,47 @@ function emailTable_(title, data, withDelta) {
   s.push('</tbody></table></div>');
   return s.join('');
 }
+
+function emailTargets_(data) {
+  var head = ['Category', 'MTD Revenue (Lakhs)', 'Month Target (Lakhs)',
+              'Achieved %', 'Pace % (vs days elapsed)'];
+  var s = ['<div style="background:#fff;border:1px solid #e2e2ea;border-radius:8px;'
+    + 'padding:14px 16px;margin-bottom:14px">'
+    + '<div style="font-size:13px;font-weight:700;margin-bottom:8px">'
+    + 'Target vs Achievement — Month to Date</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:11.5px"><thead><tr>'];
+  head.forEach(function (x) {
+    s.push('<th style="background:' + PURPLE + ';border:1px solid ' + PURPLE_DK
+      + ';padding:6px 7px;text-align:center">' + x + '</th>');
+  });
+  s.push('</tr></thead><tbody>');
+
+  data.forEach(function (d, i) {
+    var isTot = d.entity === 'TOTAL';
+    var bg = isTot ? TOTAL_BG : (i % 2 ? GREY : '#fff');
+    var td = 'border:1px solid #d8d8e0;padding:5px 7px;background:' + bg + ';'
+      + (isTot ? 'font-weight:700;' : '');
+    var pace = d.pace_pct;
+    var paceCell = (pace === '' || pace === undefined)
+      ? '<td style="' + td + 'text-align:right;color:#999">—</td>'
+      : '<td style="' + td + 'text-align:right;color:'
+        + (Number(pace) >= 100 ? '#127a2e' : '#c02626') + '">'
+        + Number(pace).toFixed(1) + '%</td>';
+    s.push('<tr>'
+      + '<td style="' + td + '">' + esc_(d.entity) + '</td>'
+      + numTd_(td, d.revenue_lakhs)
+      + numTd_(td, d.target_lakhs === '' ? '—' : d.target_lakhs)
+      + numTd_(td, d.achieved_pct === '' ? '—' : Number(d.achieved_pct).toFixed(1) + '%')
+      + paceCell + '</tr>');
+  });
+  s.push('</tbody></table>'
+    + '<div style="font-size:10.5px;color:#777;margin-top:6px">'
+    + 'Achieved % is against the whole month. Pace % pro-rates the target to the days '
+    + 'elapsed — 100% means on track today. Both are held down while recent days are '
+    + 'still filling in.</div></div>');
+  return s.join('');
+}
+
 
 function emailMovers_(title, data) {
   if (!data.length) return '';

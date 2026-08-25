@@ -1,0 +1,80 @@
+/ Monthly revenue targets, FY27 (Apr 2026 - Mar 2027), in CRORES.
+/ Source: the planning sheet supplied 25 Aug 2026. Category rows and the FY
+/ total reconcile exactly (295.12 vs a stated 295.1); the monthly footers in
+/ the original are rounded to whole crores, so this grid is the authority.
+/
+/ "Publication books" is Authored + Non Authored combined, per the user.
+/ Lines starting with "/" are comments and are skipped.
+category,month,target_cr
+Publication books,2026-04,11.5
+Publication books,2026-05,13.5
+Publication books,2026-06,12
+Publication books,2026-07,17
+Publication books,2026-08,16
+Publication books,2026-09,17
+Publication books,2026-10,12
+Publication books,2026-11,12
+Publication books,2026-12,12
+Publication books,2027-01,9
+Publication books,2027-02,8
+Publication books,2027-03,10
+Modules,2026-04,15
+Modules,2026-05,15
+Modules,2026-06,12
+Modules,2026-07,10
+Modules,2026-08,8
+Modules,2026-09,6
+Modules,2026-10,3
+Modules,2026-11,2.5
+Modules,2026-12,3.5
+Modules,2027-01,3
+Modules,2027-02,3
+Modules,2027-03,16
+Kids Books,2026-04,0.8
+Kids Books,2026-05,1
+Kids Books,2026-06,1.1
+Kids Books,2026-07,1.2
+Kids Books,2026-08,1.2
+Kids Books,2026-09,1.3
+Kids Books,2026-10,1.3
+Kids Books,2026-11,1.35
+Kids Books,2026-12,1.4
+Kids Books,2027-01,1.6
+Kids Books,2027-02,1.7
+Kids Books,2027-03,1.05
+Experiment kit,2026-04,1
+Experiment kit,2026-05,1.1
+Experiment kit,2026-06,1.2
+Experiment kit,2026-07,1.3
+Experiment kit,2026-08,1.7
+Experiment kit,2026-09,1.8
+Experiment kit,2026-10,1.8
+Experiment kit,2026-11,3.4
+Experiment kit,2026-12,4
+Experiment kit,2027-01,1.5
+Experiment kit,2027-02,1.5
+Experiment kit,2027-03,1.7
+Merchandise,2026-04,0.4
+Merchandise,2026-05,0.45
+Merchandise,2026-06,0.35
+Merchandise,2026-07,0.33
+Merchandise,2026-08,0.3
+Merchandise,2026-09,0.24
+Merchandise,2026-10,0.19
+Merchandise,2026-11,0.19
+Merchandise,2026-12,0.21
+Merchandise,2027-01,0.22
+Merchandise,2027-02,0.23
+Merchandise,2027-03,0.5
+Stationery,2026-04,0.94
+Stationery,2026-05,0.84
+Stationery,2026-06,0.69
+Stationery,2026-07,0.6
+Stationery,2026-08,0.57
+Stationery,2026-09,0.42
+Stationery,2026-10,0.5
+Stationery,2026-11,0.5
+Stationery,2026-12,0.5
+Stationery,2027-01,0.45
+Stationery,2027-02,0.5
+Stationery,2027-03,1

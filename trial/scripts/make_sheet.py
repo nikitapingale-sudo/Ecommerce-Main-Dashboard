@@ -127,6 +127,45 @@ def write_table(ws, r, title, data, with_delta):
     return r
 
 
+def write_targets(ws, r, title, data):
+    """MTD revenue against the month's plan. `achieved` is against the whole
+    month; `pace` pro-rates the target to the days elapsed, which is the one
+    that answers 'are we on track today'."""
+    ws.cell(row=r, column=1, value=title).font = Font(bold=True, size=12)
+    r += 1
+    head = ["Category", "MTD Revenue (Lakhs)", "Month Target (Lakhs)",
+            "Achieved % (full month)", "Pace % (vs days elapsed)"]
+    for i, h in enumerate(head, 1):
+        ws.cell(row=r, column=i, value=h)
+    style_header(ws, r, len(head))
+    ws.row_dimensions[r].height = 30
+    r += 1
+
+    for i, d in enumerate(data):
+        is_total = d["entity"] == "TOTAL"
+        vals = [d["entity"], num(d["revenue_lakhs"]), num(d.get("target_lakhs")),
+                pct(d.get("achieved_pct")), pct(d.get("pace_pct"))]
+        for c, v in enumerate(vals, 1):
+            cell = ws.cell(row=r, column=c, value=v)
+            cell.border = BOX
+            if is_total:
+                cell.fill = PatternFill("solid", fgColor=TOTAL_BG)
+                cell.font = Font(bold=True)
+            elif i % 2:
+                cell.fill = PatternFill("solid", fgColor=GREY)
+        ws.cell(row=r, column=2).number_format = "#,##0.00"
+        ws.cell(row=r, column=3).number_format = "#,##0.00"
+        ws.cell(row=r, column=4).number_format = "0.0%"
+        ws.cell(row=r, column=5).number_format = "0.0%"
+        # Colour the pace column: at or above plan is green, behind is red.
+        p = d.get("pace_pct")
+        if p not in ("", None):
+            ws.cell(row=r, column=5).font = Font(
+                color=GREEN if float(p) >= 100 else RED, bold=is_total)
+        r += 1
+    return r
+
+
 def write_movers(ws, r, title, data):
     ws.cell(row=r, column=1, value=title).font = Font(bold=True, size=12)
     r += 1
@@ -156,7 +195,7 @@ def build(rows, report_date):
 
     # ── Daily Report ─────────────────────────────────────────────────────────
     ws = wb.active
-    ws.title = "Daily Report"
+    ws.title = "Sheet1"
     r = 1
     ws.cell(row=r, column=1, value="PW Store — Daily Report").font = Font(bold=True, size=16)
     r += 1
@@ -211,6 +250,11 @@ def build(rows, report_date):
         r += 1
     r += 1
 
+    tgt = pick(rows, "Target vs Achievement", "MTD")
+    if tgt:
+        r = write_targets(ws, r, "Target vs Achievement — Month to Date", tgt)
+        r += 1
+
     for key, title in SECTIONS:
         for scope in ("Yesterday", "MTD"):
             data = pick(rows, key, scope)
@@ -227,7 +271,7 @@ def build(rows, report_date):
             r += 1
 
     ws.column_dimensions["A"].width = 62
-    for c in range(2, 8):
+    for c in range(2, 9):
         ws.column_dimensions[get_column_letter(c)].width = 17
     ws.freeze_panes = "A2"
 

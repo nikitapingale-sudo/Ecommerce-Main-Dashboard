@@ -43,6 +43,20 @@ PUBLICATION_PARENTS = {
 }
 STATIONERY_PARENTS = {"Stationery", "Merchandise", "Gurukulam Goodies"}
 
+# ── Target categories → the materialType values that roll into them ──────────
+# "Publication books" is Authored + Non Authored together. Material types not
+# listed here (Non-Ecommerce, Pi Devices, Goodies/Kit, Unknown) carry no target,
+# so they are reported separately rather than silently inflating an achievement.
+TARGET_MAP = [
+    ("Publication books", {"Authored", "Non Authored"}),
+    ("Modules",           {"Modules"}),
+    ("Kids Books",        {"Kids/Primary Books"}),
+    ("Experiment kit",    {"Experiment Kits"}),
+    ("Merchandise",       {"PW Merchandise"}),
+    ("Stationery",        {"PW Stationery"}),
+]
+TARGETS_FILE = os.path.join(HERE, "targets.csv")
+
 REQUIRED_ENV = ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "REPORT_TO")
 
 
@@ -455,6 +469,9 @@ CSV_COLUMNS = [
     "report_date", "section", "scope", "rank", "entity",
     "orders", "orders_change_pct", "revenue_lakhs", "revenue_change_pct",
     "aov", "revenue_contribution_pct", "qty", "qty_prev", "qty_diff",
+    # Target tracking. Appended rather than inserted so anything reading by
+    # column position keeps working; the Apps Script reads by header name.
+    "target_lakhs", "achieved_pct", "pace_pct",
 ]
 
 
@@ -525,6 +542,96 @@ def _mover_rows(section, cur_comp, prev_comp, report_date, rising, limit=12):
         "revenue_lakhs": "", "revenue_change_pct": "", "aov": "",
         "revenue_contribution_pct": "", "qty": int(c), "qty_prev": int(p), "qty_diff": int(d),
     } for i, (t, c, p, d) in enumerate(scored, 1)]
+
+
+def load_targets():
+    """{(category, 'YYYY-MM'): crores}. Missing file just means no target columns."""
+    if not os.path.exists(TARGETS_FILE):
+        say("no targets.csv - target columns will be blank")
+        return {}
+    import csv as _csv
+    out = {}
+    lines = [ln for ln in io.open(TARGETS_FILE, encoding="utf-8-sig")
+             if not ln.lstrip().startswith("/")]
+    for row in _csv.DictReader(lines):
+        try:
+            out[(row["category"].strip(), row["month"].strip())] = float(row["target_cr"])
+        except (KeyError, ValueError, TypeError):
+            continue
+    return out
+
+
+def target_rows(bundle_mtd, report_date, targets):
+    """MTD actual against the month's target, per planning category.
+
+    Two different percentages, because they answer different questions:
+      achieved_pct — MTD revenue against the WHOLE month's target
+      pace_pct     — MTD revenue against the target pro-rated to the days
+                     elapsed, i.e. "are we on track today?"
+    Both are understated while the month's recent days are still filling in;
+    see the Data Completeness section.
+    """
+    if not targets:
+        return []
+
+    month = report_date.strftime("%Y-%m")
+    by_type = {str(r.get("name")): (r.get("revenue") or 0)
+               for r in (bundle_mtd.get("by") or {}).get("materialType") or []}
+
+    days_in_month = calendar.monthrange(report_date.year, report_date.month)[1]
+    elapsed = report_date.day
+    frac = elapsed / float(days_in_month)
+
+    rows, mapped = [], set()
+    tot_actual = tot_target = 0.0
+    for i, (cat, types) in enumerate(TARGET_MAP, 1):
+        tgt_cr = targets.get((cat, month))
+        if tgt_cr is None:
+            continue
+        actual = sum(by_type.get(t, 0) for t in types)
+        mapped |= types
+        tgt_l = tgt_cr * 100.0                      # crores → lakhs
+        act_l = actual / 1e5
+        tot_actual += act_l
+        tot_target += tgt_l
+        rows.append({
+            "report_date": report_date.isoformat(), "section": "Target vs Achievement",
+            "scope": "MTD", "rank": i, "entity": cat,
+            "orders": "", "orders_change_pct": "",
+            "revenue_lakhs": round(act_l, 2), "revenue_change_pct": "",
+            "aov": "", "revenue_contribution_pct": "",
+            "qty": "", "qty_prev": "", "qty_diff": "",
+            "target_lakhs": round(tgt_l, 2),
+            "achieved_pct": round(act_l / tgt_l * 100, 1) if tgt_l else "",
+            "pace_pct": round(act_l / (tgt_l * frac) * 100, 1) if tgt_l and frac else "",
+        })
+
+    rows.append({
+        "report_date": report_date.isoformat(), "section": "Target vs Achievement",
+        "scope": "MTD", "rank": 0, "entity": "TOTAL",
+        "orders": "", "orders_change_pct": "",
+        "revenue_lakhs": round(tot_actual, 2), "revenue_change_pct": "",
+        "aov": "", "revenue_contribution_pct": "",
+        "qty": "", "qty_prev": "", "qty_diff": "",
+        "target_lakhs": round(tot_target, 2),
+        "achieved_pct": round(tot_actual / tot_target * 100, 1) if tot_target else "",
+        "pace_pct": round(tot_actual / (tot_target * frac) * 100, 1) if tot_target and frac else "",
+    })
+
+    # Revenue with no target attached to it — stated rather than buried, so the
+    # total above is never mistaken for all of the month's revenue.
+    untargeted = sum(v for k, v in by_type.items() if k not in mapped)
+    if untargeted:
+        rows.append({
+            "report_date": report_date.isoformat(), "section": "Target vs Achievement",
+            "scope": "MTD", "rank": 99, "entity": "(no target set)",
+            "orders": "", "orders_change_pct": "",
+            "revenue_lakhs": round(untargeted / 1e5, 2), "revenue_change_pct": "",
+            "aov": "", "revenue_contribution_pct": "",
+            "qty": "", "qty_prev": "", "qty_diff": "",
+            "target_lakhs": "", "achieved_pct": "", "pace_pct": "",
+        })
+    return rows
 
 
 def completeness(report_date):
@@ -616,6 +723,11 @@ def build_csv(yest):
                        sku_rows(b_m, STATIONERY_PARENTS), None, rd, limit=10)
     rows += _mover_rows("Inclined Products", c_y, c_d, rd, rising=True)
     rows += _mover_rows("Declined Products", c_y, c_d, rd, rising=False)
+
+    tgt = target_rows(b_m, yest, load_targets())
+    if tgt:
+        say("target tracking for %s: %d categories" % (yest.strftime("%b %Y"), len(tgt) - 1))
+        rows += tgt
 
     # How much of this day has actually landed. The mailer reads this and warns
     # rather than presenting a third of a day as if it were the whole day.
