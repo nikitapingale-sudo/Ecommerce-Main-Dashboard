@@ -4,3 +4,7 @@
 # Tunnel binary - 54MB, downloaded not authored. See tools/restart-tunnel.ps1
 tools/cloudflared.exe
 trial/scripts/daily_report_preview.html
+trial/scripts/PW_Store_Daily_Report.xlsx
+trial/scripts/daily_report_*.csv
+trial/scripts/_*.txt
+trial/scripts/_*.json
