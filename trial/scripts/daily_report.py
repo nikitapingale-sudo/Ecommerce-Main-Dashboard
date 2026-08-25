@@ -340,10 +340,10 @@ def build(yest):
 
     parts.append(side_by_side(
         card("Yesterday — Channel Summary",
-             breakdown_table(b_y["by"].get("orderClass"), b_d["by"].get("orderClass"),
+             breakdown_table(b_y["by"].get("channel"), b_d["by"].get("channel"),
                              totals=T_Y, prev_totals=T_D)),
         card("MTD — Channel Summary",
-             breakdown_table(b_m["by"].get("orderClass"), None, with_delta=False,
+             breakdown_table(b_m["by"].get("channel"), None, with_delta=False,
                              totals=T_M)),
     ))
 
@@ -596,9 +596,9 @@ def build_csv(yest):
             "qty": int(m.get("qty") or 0), "qty_prev": "", "qty_diff": "",
         })
 
-    rows += _tidy_rows("Channel Summary", "Yesterday", b_y["by"].get("orderClass"),
-                       b_d["by"].get("orderClass"), rd, totals=T_Y, prev_totals=T_D)
-    rows += _tidy_rows("Channel Summary", "MTD", b_m["by"].get("orderClass"), None, rd, totals=T_M)
+    rows += _tidy_rows("Channel Summary", "Yesterday", b_y["by"].get("channel"),
+                       b_d["by"].get("channel"), rd, totals=T_Y, prev_totals=T_D)
+    rows += _tidy_rows("Channel Summary", "MTD", b_m["by"].get("channel"), None, rd, totals=T_M)
     rows += _tidy_rows("Product Type Summary", "Yesterday", b_y["by"].get("materialType"),
                        b_d["by"].get("materialType"), rd, totals=T_Y, prev_totals=T_D)
     rows += _tidy_rows("Product Type Summary", "MTD", b_m["by"].get("materialType"), None, rd, totals=T_M)
