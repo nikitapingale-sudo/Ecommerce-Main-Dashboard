@@ -220,7 +220,7 @@ export default function FilterPanel({ open, onClose, filters, onChange, onReset,
         <button onClick={reset} style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 13px', borderRadius:9, background:'var(--surface)', border:'1px solid var(--border)', color:'var(--text2)', fontSize:12, fontWeight:700 }}>
           <RotateCcw size={13}/> Reset
         </button>
-        <button onClick={apply} style={{ flex:1, padding:'9px 14px', borderRadius:9, border:'none', background: dirty ? 'var(--accent-grad)' : 'var(--surface)', color: dirty ? '#fff' : 'var(--text3)', fontSize:13, fontWeight:800, cursor: dirty?'pointer':'default', boxShadow: dirty?'0 3px 10px rgba(79,70,229,.3)':'none', border: dirty?'none':'1px solid var(--border)' }}>
+        <button onClick={apply} style={{ flex:1, padding:'9px 14px', borderRadius:9, background: dirty ? 'var(--accent-grad)' : 'var(--surface)', color: dirty ? '#fff' : 'var(--text3)', fontSize:13, fontWeight:800, cursor: dirty?'pointer':'default', boxShadow: dirty?'0 3px 10px rgba(79,70,229,.3)':'none', border: dirty?'none':'1px solid var(--border)' }}>
           {dirty ? 'Apply Filters' : 'Filters applied'}
         </button>
       </div>

@@ -36,8 +36,10 @@ export default function Sidebar({ page, setPage }) {
     return (
       <button onClick={() => { setPage(id); onNav && onNav(); }}
         style={{
-          display:'flex', alignItems:'center', gap:10, width:'100%',
+          display:'flex', alignItems:'center', gap:10,
           padding: collapsed ? '9px 0' : '8px 10px', margin: collapsed ? '2px 0' : '1px 8px',
+          // Single width declaration: a plain width:'100%' used to sit above and
+          // was silently overridden by this one, which is the intended value.
           width: collapsed ? '100%' : 'calc(100% - 16px)',
           justifyContent: collapsed ? 'center' : 'flex-start',
           borderRadius:'var(--r)',
